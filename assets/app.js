@@ -175,13 +175,13 @@ function drawQuestions({ questions }) {
   const COLS = 10;
   const COL_W = W / COLS;
 
-  // タイポ
-  const CHAR_GAP = 34;
-  const BOX = 40;
-  const BOX_GAP = 6;
-  const AFTER_GAP = 10;
-  const NUM_R = 13;              // 丸の半径
-  const AFTER_NUM_PADDING = 6;   // 丸の直後の余白
+ // タイポ
+const CHAR_GAP = 32;   // 行ピッチ（少しだけ詰める）
+const BOX = 56;        // ★ 解答四角を大きく（40 -> 56）
+const BOX_GAP = 8;     // ★ マス間も少し広げる（6 -> 8）
+const AFTER_GAP = 12;  // マス後の余白
+const NUM_R = 13;      // 丸の半径
+const AFTER_NUM_PADDING = 6; // 丸の直後の余白
 
   const items = questions.slice(0, 20);
 
