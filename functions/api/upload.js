@@ -1,18 +1,20 @@
 // /functions/api/upload.js
-// Cloudflare Pages Functions → Google Drive へ dataURL 画像を保存
+// Cloudflare Pages Functions → Google Drive へ dataURL(PNG等) を保存
+
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const { filename, dataUrl, mimeType = "image/png" } = await request.json();
-
+    const { filename, dataUrl, mimeType = "image/png" } = await request.json().catch(() => ({}));
     if (!filename || !dataUrl?.startsWith("data:")) {
-      return json({ ok: false, error: "invalid payload" }, 400);
+      return j({ ok: false, error: "invalid payload" }, 400);
     }
     if (!env.GOOGLE_CREDENTIALS || !env.DRIVE_FOLDER_ID) {
-      return json({ ok: false, error: "missing env vars" }, 500);
+      return j({ ok: false, error: "missing env vars" }, 500);
     }
 
-    // 1) サービスアカウントで JWT → アクセストークン
-    const creds = JSON.parse(env.GOOGLE_CREDENTIALS.replace(/\\n/g, "\n")); // ← 改行復元
+    // ★ 環境変数を読み込む「行の直後」で \n → 実改行 に置換（ここが重要）
+    const creds = JSON.parse(env.GOOGLE_CREDENTIALS.replace(/\\n/g, "\n"));
+
+    // 1) サービスアカウントで JWT 作成 → アクセストークン取得
     const now = Math.floor(Date.now() / 1000);
     const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
     const claim = b64url(JSON.stringify({
@@ -23,9 +25,12 @@ export const onRequestPost = async ({ request, env }) => {
       iat: now
     }));
     const toSign = new TextEncoder().encode(`${header}.${claim}`);
+
+    // PEM → PKCS#8 (ArrayBuffer) → Sign(RS256)
+    const keyBuf = pemToPkcs8(creds.private_key);
     const key = await crypto.subtle.importKey(
       "pkcs8",
-      pemToPkcs8(creds.private_key),
+      keyBuf,
       { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
       false,
       ["sign"]
@@ -41,24 +46,25 @@ export const onRequestPost = async ({ request, env }) => {
         assertion: jwt
       })
     });
+    const tokenText = await tokenRes.text();
     if (!tokenRes.ok) {
-      return json({ ok: false, error: "token error", detail: await tokenRes.text() }, 500);
+      return j({ ok: false, error: "token error", detail: tokenText }, 500);
     }
-    const { access_token } = await tokenRes.json();
+    const { access_token } = JSON.parse(tokenText);
 
-    // 2) dataURL → バイナリ
+    // 2) dataURL → バイナリ化
     const comma = dataUrl.indexOf(",");
-    const meta = dataUrl.slice(5, comma); // e.g. "image/png;base64"
-    const mime = mimeType || meta.split(";")[0] || "application/octet-stream";
+    const meta = dataUrl.slice(5, comma); // "image/png;base64" など
+    const finalMime = mimeType || meta.split(";")[0] || "application/octet-stream";
     const b64 = dataUrl.slice(comma + 1);
     const fileBytes = b64ToBytes(b64);
 
-    // 3) Drive multipart/related アップロード
-    const metaPart = JSON.stringify({ name: filename, parents: [env.DRIVE_FOLDER_ID] });
-    const boundary = "xxxxx" + Math.random().toString(16).slice(2);
-    const body = buildMultipart(boundary, metaPart, mime, fileBytes);
+    // 3) Drive へ multipart/related でアップロード
+    const metadata = JSON.stringify({ name: filename, parents: [env.DRIVE_FOLDER_ID] });
+    const boundary = "bnd_" + Math.random().toString(16).slice(2);
+    const body = buildMultipart(boundary, metadata, finalMime, fileBytes);
 
-    const up = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", {
+    const upRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${access_token}`,
@@ -66,18 +72,19 @@ export const onRequestPost = async ({ request, env }) => {
       },
       body
     });
-    const text = await up.text();
-    if (!up.ok) return json({ ok: false, error: "Drive upload failed", detail: text }, 500);
-
-    const data = JSON.parse(text);
-    return json({ ok: true, id: data.id, webViewLink: data.webViewLink });
+    const upText = await upRes.text();
+    if (!upRes.ok) {
+      return j({ ok: false, error: "Drive upload failed", detail: upText }, 500);
+    }
+    const data = JSON.parse(upText);
+    return j({ ok: true, id: data.id, webViewLink: data.webViewLink });
   } catch (e) {
-    return json({ ok: false, error: String(e?.message || e) }, 500);
+    return j({ ok: false, error: String(e?.message || e) }, 500);
   }
 };
 
-/* helpers */
-const json = (obj, status = 200) =>
+/* ---------- helpers ---------- */
+const j = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 
 const b64url = (str) => btoa(str).replace(/=+/g, "").replace(/\+/g, "-").replace(/\//g, "_");
