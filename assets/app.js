@@ -102,8 +102,8 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana =
   if (yomigana) {
     drawVerticalText({
       text: yomigana,
-      x: x + box/2 + 10,   // 右へオフセット（見やすさ優先）
-      y: y + 10,
+      x: x + box/2 + 6,   // 右へオフセット（見やすさ優先）
+      y: y + 8,
       lineH: 26,
       font: "22px serif"   // ★ 14px → 22px に拡大
     });
@@ -252,7 +252,7 @@ function drawQuestions({ questions }) {
       if (kana) {
         drawVerticalText({
           text: kana,
-          x: anchorX + BOX/2 + 10,
+          x: anchorX + BOX/2 + 30,
           y: cursorY + 10,
           lineH: 26,
           font: "18px serif"
