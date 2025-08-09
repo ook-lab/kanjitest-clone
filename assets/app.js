@@ -194,7 +194,7 @@ function drawQuestions({ questions }) {
     const rowTop = (row === 0) ? (PAD_Y + ROW_GAP_TOP) : (MID_Y + ROW_GAP_TOP);
 
     // ① 丸数字はクリップの外で描く（上が欠けないよう中心Yを十分下げる）
-    const numCenterY = rowTop + NUM_R + 2;                 // ← これで上端に当たらない
+    const numCenterY = rowTop + NUM_R + 2;
     drawNumberCircle({ n: i + 1, x: anchorX, y: numCenterY, r: NUM_R });
 
     // 以降は段内のみをクリップして本文・マスを描画
@@ -215,17 +215,15 @@ function drawQuestions({ questions }) {
       after  = full.slice(idx + target.length);
     }
 
-    // ② 本文（before）：丸の**半径ぶん + 余白**を空けてから開始 → 重なり防止
+    // ② 本文（before）
     let cursorY = numCenterY + NUM_R + AFTER_NUM_PADDING;
-
     if (before) {
       drawVerticalText({ text: before, x: anchorX, y: cursorY, lineH: CHAR_GAP });
       cursorY += before.length * CHAR_GAP + 4;
     }
 
-    // ③ マス＋ふりがな（ふりがな位置は現状のまま：あなたの実装を踏襲）
+    // ③ マス＋ふりがな（※ふりがな＝右側）
     if (target) {
-      // マス本体
       const totalH = target.length * (BOX + BOX_GAP) - BOX_GAP;
       ctx.save();
       ctx.strokeStyle = "#111"; ctx.lineWidth = 2;
@@ -238,10 +236,12 @@ function drawQuestions({ questions }) {
         ctx.stroke();
       }
       ctx.restore();
-      // ふりがな（左側のまま）
+
+      // ★ここを右側に修正★
       if (kana) {
-        drawVerticalText({ text: kana, x: anchorX - BOX/2 - 22, y: cursorY + 8, lineH: 20, font: "14px serif" });
+        drawVerticalText({ text: kana, x: anchorX + BOX/2 + 22, y: cursorY + 8, lineH: 20, font: "14px serif" });
       }
+
       cursorY += totalH + AFTER_GAP;
     }
 
@@ -262,9 +262,6 @@ function drawQuestions({ questions }) {
   ctx.fillText("漢字テストメーカー", 1700 - 20, 1200 - 16);
   ctx.restore();
 }
-
-
-
 
 /* ---------------- Load / Save ---------------- */
 function loadFromJSON(obj) {
