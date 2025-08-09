@@ -11,8 +11,15 @@ export const onRequestPost = async ({ request, env }) => {
       return j({ ok: false, error: "missing env vars" }, 500);
     }
 
-    // ★ 環境変数を読み込む「行の直後」で \n → 実改行 に置換（ここが重要）
-    const creds = JSON.parse(env.GOOGLE_CREDENTIALS.replace(/\\n/g, "\n"));
+   let creds;
+try {
+  // まずはそのまま（\n がエスケープ済みのケース）
+  creds = JSON.parse(env.GOOGLE_CREDENTIALS);
+} catch {
+  // 生の改行で壊れているケース → 生の改行を \n にエスケープして再挑戦
+  const fixed = env.GOOGLE_CREDENTIALS.replace(/\n/g, "\\n");
+  creds = JSON.parse(fixed);
+}
 
     // 1) サービスアカウントで JWT 作成 → アクセストークン取得
     const now = Math.floor(Date.now() / 1000);
