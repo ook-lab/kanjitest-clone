@@ -12,7 +12,7 @@ export const onRequestPost = async ({ request, env }) => {
     }
 
     // 1) サービスアカウントで JWT → アクセストークン
-    const creds = JSON.parse(env.GOOGLE_CREDENTIALS);
+    const creds = JSON.parse(env.GOOGLE_CREDENTIALS.replace(/\\n/g, "\n")); // ← 改行復元
     const now = Math.floor(Date.now() / 1000);
     const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
     const claim = b64url(JSON.stringify({
