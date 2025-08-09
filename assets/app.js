@@ -104,18 +104,22 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana =
     ctx.stroke();
   }
 
-  // ふりがな（右側・大きめ・箱に寄せる）
-if (yomigana) {
-  drawVerticalText({
-    text: yomigana,
-    x: x + box/2 + 0,   // ★ 6 → 2（ほぼ密着。必要なら 0〜4 で調整）
-    y: y + 10,
-    lineH: 26,
-    font: "18px serif",
-    align: "left",      // ★ 左端基準で描く
-    adjustPunct: false  // ふりがなは句読点補正なし（任意）
-  });
-}
+  // ふりがな（右側・寄せる）
+  if (yomigana) {
+    drawVerticalText({
+      text: yomigana,
+      x: x + box/2 + 2,   // ほぼ密着
+      y: y + 10,
+      lineH: 26,
+      font: "18px serif",
+      align: "left",      // ← left 揃えで本当に寄る（drawVerticalTextにalign対応済みなら）
+      adjustPunct: false
+    });
+  }
+
+  ctx.restore();
+  return totalH;
+} // ← この閉じカッコが必要！
 
 
 /* ---------------- Drawing ---------------- */
