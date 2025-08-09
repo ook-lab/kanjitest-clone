@@ -197,7 +197,7 @@ function drawQuestions({ questions }) {
 
   // 行間・マスサイズ設定（本文は詰め気味／ふりがなは個別設定）
   const CHAR_GAP = 28;   // 本文（before/after）用の縦ピッチ
-  const BOX = 104;       // 解答マス（ご指定の大型設定）
+  const BOX = 104;       // 解答マス
   const BOX_GAP = 8;     // マス間
   const AFTER_GAP = 12;  // マス後の余白
   const NUM_R = 13;      // 丸数字の半径
@@ -242,7 +242,7 @@ function drawQuestions({ questions }) {
       cursorY += before.length * CHAR_GAP + 4;
     }
 
-    // ③ マス＋ふりがな（右側固定、ふりがなは大きめ）
+    // ③ マス＋ふりがな（右側固定、ふりがなは枠にピタ寄せ）
     if (target) {
       const totalH = target.length * (BOX + BOX_GAP) - BOX_GAP;
       ctx.save();
@@ -257,15 +257,20 @@ function drawQuestions({ questions }) {
       }
       ctx.restore();
 
-      // ふりがな（右側・大きめ）
+      // ★ふりがな：左揃えで本当に寄せる（句読点補正なし）
       if (kana) {
-        drawVerticalText({
-          text: kana,
-          x: anchorX + BOX/2 + 30,
-          y: cursorY + 10,
-          lineH: 26,
-          font: "18px serif"
-        });
+        ctx.save();
+        ctx.font = "18px serif";
+        ctx.fillStyle = "#000";
+        ctx.textAlign = "left";      // ← 左端基準
+        ctx.textBaseline = "top";
+        const fx = anchorX + BOX/2 + 1; // ← 枠ほぼ密着（0〜3で微調整）
+        const fy = cursorY + 10;
+        const fLH = 26;
+        for (let k = 0; k < kana.length; k++) {
+          ctx.fillText(kana[k], fx, fy + k * fLH);
+        }
+        ctx.restore();
       }
 
       cursorY += totalH + AFTER_GAP;
@@ -291,6 +296,7 @@ function drawQuestions({ questions }) {
   ctx.fillText(footerText, 1700 - 20, 1200 - 16);
   ctx.restore();
 }
+
 
 /* ---------------- Load / Save ---------------- */
 function loadFromJSON(obj) {
