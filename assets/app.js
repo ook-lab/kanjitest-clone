@@ -1,11 +1,19 @@
+// assets/app.js（全文差し替え）
+
 const $ = (s) => document.querySelector(s);
 const canvas = $("#preview");
 const ctx = canvas.getContext("2d");
 
+// 追加：読み込んだJSONのファイル名（フッター表示・採点用識別）
+let __sourceFilename = "";
+function setSourceFilename(name) {
+  __sourceFilename = (name || "").toString();
+}
+
 // 追加：DPRに合わせてキャンバスをスケール（横長 1700x1200）
 function setupCanvasForDPR() {
   const dpr = window.devicePixelRatio || 1;
-  const cssW = 1700, cssH = 1200; // ← 横長
+  const cssW = 1700, cssH = 1200; // 横長
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
   canvas.width = Math.floor(cssW * dpr);
@@ -34,7 +42,7 @@ function parseParams() {
   return { words, cols, auto };
 }
 
-/* 共通：縦書き1文字ずつ（句読点の位置補正 さらに強め） */
+/* 共通：縦書き1文字ずつ（句読点の位置補正 強め） */
 function drawVerticalText({ text, x, y, lineH = 36, font = "32px serif" }) {
   ctx.save();
   ctx.font = font;
@@ -42,7 +50,7 @@ function drawVerticalText({ text, x, y, lineH = 36, font = "32px serif" }) {
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
 
-  // 句読点・記号を右に寄せる（前回よりさらに強め）
+  // 句読点・記号を右に寄せる
   const xAdjust = {
     "。": 24, "、": 24, "．": 24, "，": 24,
     "・": 12, "！": 10, "？": 10,
@@ -56,7 +64,6 @@ function drawVerticalText({ text, x, y, lineH = 36, font = "32px serif" }) {
   }
   ctx.restore();
 }
-
 
 /* 共通：番号の丸 */
 function drawNumberCircle({ n, x, y, r = 16 }) {
@@ -74,7 +81,7 @@ function drawNumberCircle({ n, x, y, r = 16 }) {
   ctx.restore();
 }
 
-// 共通：マス＋ふりがな（ふりがなは右側に配置）
+/* 共通：マス＋ふりがな（ふりがなは右側・大きめ） */
 function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana = "" }) {
   ctx.save();
   ctx.strokeStyle = "#111";
@@ -91,14 +98,14 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana =
     ctx.stroke();
   }
 
-  // ふりがな（右側に配置、間隔も広げる）
+  // ふりがな（右側・大きめ。OCR/視認性を上げる）
   if (yomigana) {
     drawVerticalText({
       text: yomigana,
-      x: x + box/2 + 26, // 24→26
-      y: y + 12,         // 10→12
-      lineH: 24,         // 22→24
-      font: "14px serif"
+      x: x + box/2 + 30,   // 右へオフセット（見やすさ優先）
+      y: y + 10,
+      lineH: 26,
+      font: "18px serif"   // ★ 14px → 18px に拡大
     });
   }
 
@@ -114,8 +121,8 @@ function drawWords({ words, cols = 2 }) {
   ctx.fillRect(0, 0, 1700, 1200);
 
   const padding = 80;
-  const contentW = 1700 - padding * 2;  // ← 横長幅に
-  const contentH = 1200 - padding * 2;  // ← 横長高さに
+  const contentW = 1700 - padding * 2;  // 横長幅
+  const contentH = 1200 - padding * 2;  // 横長高さ
 
   // 外枠
   ctx.strokeStyle = "#e5e5e5";
@@ -149,7 +156,7 @@ function drawWords({ words, cols = 2 }) {
   });
 }
 
-/* B) questions 形式：番号・ふりがな・空欄・縦書き文（横長 1700x1200 / 段間狭め & 丸数字と本文の重なり解消） */
+/* B) questions 形式：番号・ふりがな・空欄・縦書き文（横長 1700x1200） */
 function drawQuestions({ questions }) {
   // 背景（横長）
   ctx.fillStyle = "#fff";
@@ -179,10 +186,10 @@ function drawQuestions({ questions }) {
   const COLS = 10;
   const COL_W = W / COLS;
 
-  // 行間・マスサイズ設定
-  const CHAR_GAP = 28;   // 本文（before/after）用行ピッチ（詰める）
-  const BOX = 104;       // ★ マスを更に大きく（前104 → +2段階）
-  const BOX_GAP = 8;     // マス間の間隔
+  // 行間・マスサイズ設定（本文は詰め気味／ふりがなは個別設定）
+  const CHAR_GAP = 28;   // 本文（before/after）用の縦ピッチ
+  const BOX = 104;       // 解答マス（ご指定の大型設定）
+  const BOX_GAP = 8;     // マス間
   const AFTER_GAP = 12;  // マス後の余白
   const NUM_R = 13;      // 丸数字の半径
   const AFTER_NUM_PADDING = 6; // 丸数字直後の余白
@@ -197,7 +204,7 @@ function drawQuestions({ questions }) {
     // 段の上端
     const rowTop = (row === 0) ? (PAD_Y + ROW_GAP_TOP) : (MID_Y + ROW_GAP_TOP);
 
-    // ① 丸数字は段外で描画
+    // ① 丸数字は段外で描画（欠け防止）
     const numCenterY = rowTop + NUM_R + 2;
     drawNumberCircle({ n: i + 1, x: anchorX, y: numCenterY, r: NUM_R });
 
@@ -222,16 +229,11 @@ function drawQuestions({ questions }) {
     // ② 本文（before）※本文のみ詰める
     let cursorY = numCenterY + NUM_R + AFTER_NUM_PADDING;
     if (before) {
-      drawVerticalText({
-        text: before,
-        x: anchorX,
-        y: cursorY,
-        lineH: CHAR_GAP
-      });
+      drawVerticalText({ text: before, x: anchorX, y: cursorY, lineH: CHAR_GAP });
       cursorY += before.length * CHAR_GAP + 4;
     }
 
-    // ③ マス＋ふりがな（右側固定、ふりがな詰めない）
+    // ③ マス＋ふりがな（右側固定、ふりがなは大きめ）
     if (target) {
       const totalH = target.length * (BOX + BOX_GAP) - BOX_GAP;
       ctx.save();
@@ -246,14 +248,14 @@ function drawQuestions({ questions }) {
       }
       ctx.restore();
 
-      // ふりがなは右側に表示（間隔詰めない）
+      // ふりがな（右側・大きめ）
       if (kana) {
         drawVerticalText({
           text: kana,
-          x: anchorX + BOX/2 + 22,
-          y: cursorY + 8,
-          lineH: 20,
-          font: "14px serif"
+          x: anchorX + BOX/2 + 30,
+          y: cursorY + 10,
+          lineH: 26,
+          font: "18px serif"
         });
       }
 
@@ -262,27 +264,24 @@ function drawQuestions({ questions }) {
 
     // ④ 本文（after）※本文のみ詰める
     if (after) {
-      drawVerticalText({
-        text: after,
-        x: anchorX,
-        y: cursorY,
-        lineH: CHAR_GAP
-      });
+      drawVerticalText({ text: after, x: anchorX, y: cursorY, lineH: CHAR_GAP });
     }
 
     ctx.restore(); // クリップ解除
   });
 
-  // 右下クレジット
+  // 右下フッター：読み込んだファイル名を大きめ太字（スキャン/OCR向け）
   ctx.save();
-  ctx.font = "14px system-ui, sans-serif";
-  ctx.fillStyle = "#777";
+  ctx.font = "600 24px system-ui, sans-serif"; // 太め・大きめ
+  ctx.fillStyle = "#000";                      // コントラスト重視（OCR向け）
   ctx.textAlign = "right";
   ctx.textBaseline = "alphabetic";
-  ctx.fillText("漢字テストメーカー", 1700 - 20, 1200 - 16);
+  const footerText = __sourceFilename && __sourceFilename.trim()
+    ? __sourceFilename
+    : "（ファイル未指定）";
+  ctx.fillText(footerText, 1700 - 20, 1200 - 16);
   ctx.restore();
 }
-
 
 /* ---------------- Load / Save ---------------- */
 function loadFromJSON(obj) {
@@ -359,6 +358,7 @@ async function handleJSONFile(file) {
   try {
     const text = await readFileAsText(file);
     const obj = JSON.parse(text);
+    setSourceFilename(file?.name || "");   // ★ 追加：フッター用にファイル名を保持
     loadFromJSON(obj);
     alert("JSONを読み込みました");
   } catch (e) {
@@ -420,10 +420,13 @@ if (auto === "1") {
   $("#cols").value = String(cols);
 }
 
-// postMessage で外部から生成命令
+// postMessage で外部から生成命令（外部からファイル名を渡せるように）
 window.addEventListener("message", (ev) => {
   if (ev?.data?.type === "GENERATE") {
     const payload = ev.data.payload || {};
+    if (typeof payload.filename === "string") {
+      setSourceFilename(payload.filename); // ★ 追加
+    }
     if (Array.isArray(payload.questions)) {
       loadFromJSON({ questions: payload.questions });
     } else {
