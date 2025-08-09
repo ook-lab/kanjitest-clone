@@ -9,18 +9,25 @@ textarea, input { width: 100%; padding: 8px; font: inherit; }
 button { padding: 8px 12px; font: inherit; cursor: pointer; }
 .preview { margin-top: 24px; }
 
-/* ←これが必須（見た目サイズ） */
-#preview {
+/* 画面表示用（見た目サイズ）。両キャンバス共通 */
+#preview, #answers {
   width: 100%;
   height: auto;
   border: 1px solid #ccc;
   background: #fff;
+  display: block;
+  margin: 0 auto;
 }
-/* ---- 印刷用（左右余白ゼロ＆キャンバスをぴったり出力） ---- */
+
+/* 2枚目は少し余白 */
+#answers { margin-top: 24px; }
+
+/* ---- 印刷用（A4横／余白ゼロ／2ページ） ---- */
 @page {
-  size: A4 landscape;   /* 横向き */
-  margin: 0;            /* 余白ゼロ：ブラウザのデフォルト余白を消す */
+  size: A4 landscape;
+  margin: 0;
 }
+
 @media print {
   html, body {
     margin: 0 !important;
@@ -33,13 +40,20 @@ button { padding: 8px 12px; font: inherit; cursor: pointer; }
     margin: 0 !important;
     padding: 0 !important;
     width: 100vw !important;
-    height: 100vh !important;
   }
-  /* キャンバスをページいっぱいに中央配置（拡大縮小なしで出すなら width/height 固定でもOK） */
-  #preview {
-    display: block;
-    margin: 0 auto !important;
+
+  /* 両キャンバスをページ幅にフィット */
+  #preview, #answers {
     width: 100vw !important;
     height: auto !important;
+    border: none;          /* 印刷では枠線不要なら消す */
+    margin: 0 auto !important;
+  }
+
+  /* 2ページ目に送る */
+  #answers {
+    page-break-before: always;
+    break-before: page;
+    margin-top: 0 !important;
   }
 }

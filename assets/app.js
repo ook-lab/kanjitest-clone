@@ -1,8 +1,12 @@
-// assets/app.js（全文差し替え）
+// assets/app.js（全文差し替え：見た目は現状維持＋解答ページ対応のみ追加）
 
 const $ = (s) => document.querySelector(s);
 const canvas = $("#preview");
 const ctx = canvas.getContext("2d");
+
+// ★ 解答ページ（存在する場合だけ使う）
+const answersCanvas = $("#answers") || null;
+const answersCtx = answersCanvas ? answersCanvas.getContext("2d") : null;
 
 // 追加：読み込んだJSONのファイル名（フッター表示・採点用識別）
 let __sourceFilename = "";
@@ -10,7 +14,7 @@ function setSourceFilename(name) {
   __sourceFilename = (name || "").toString();
 }
 
-// 追加：DPRに合わせてキャンバスをスケール（横長 1700x1200）
+// 追加：DPRに合わせてキャンバスをスケール（横長 1700x1200）※既存そのまま
 function setupCanvasForDPR() {
   const dpr = window.devicePixelRatio || 1;
   const cssW = 1700, cssH = 1200; // 横長
@@ -19,6 +23,18 @@ function setupCanvasForDPR() {
   canvas.width = Math.floor(cssW * dpr);
   canvas.height = Math.floor(cssH * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// ★ 解答キャンバス用（answers がある場合だけ呼ぶ）
+function setupCanvasForDPR_Answers() {
+  if (!answersCanvas || !answersCtx) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = 1700, cssH = 1200; // 横長
+  answersCanvas.style.width = cssW + "px";
+  answersCanvas.style.height = cssH + "px";
+  answersCanvas.width = Math.floor(cssW * dpr);
+  answersCanvas.height = Math.floor(cssH * dpr);
+  answersCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 // 直近に読み込んだオリジナルJSON（ラウンドトリップ）
@@ -42,19 +58,21 @@ function parseParams() {
   return { words, cols, auto };
 }
 
-/* 共通：縦書き1文字ずつ（句読点の位置補正を任意で） */
+/* 共通：縦書き1文字ずつ（句読点の位置補正を任意で）※既存仕様そのまま */
 function drawVerticalText({
   text, x, y,
   lineH = 36,
   font = "32px serif",
-  align = "center",           // ★ 追加
-  adjustPunct = true          // ★ 追加: 句読点右寄せの有無
+  align = "center",
+  adjustPunct = true,
+  useCtx = ctx       // ★ 追加：描画先を選べる（既定は問題側ctx）
 }) {
-  ctx.save();
-  ctx.font = font;
-  ctx.fillStyle = "#000";
-  ctx.textAlign = align;       // ★ 指定揃えを反映
-  ctx.textBaseline = "top";
+  const use = useCtx;
+  use.save();
+  use.font = font;
+  use.fillStyle = "#000";
+  use.textAlign = align;
+  use.textBaseline = "top";
 
   const xAdjust = adjustPunct ? {
     "。": 24, "、": 24, "．": 24, "，": 24,
@@ -65,62 +83,63 @@ function drawVerticalText({
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     const dx = xAdjust ? (xAdjust[ch] || 0) : 0;
-    ctx.fillText(ch, x + dx, y + i * lineH);
+    use.fillText(ch, x + dx, y + i * lineH);
   }
-  ctx.restore();
+  use.restore();
 }
 
-
-/* 共通：番号の丸 */
-function drawNumberCircle({ n, x, y, r = 16 }) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "#222";
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.font = "16px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#111";
-  ctx.fillText(String(n), x, y);
-  ctx.restore();
+/* 共通：番号の丸 ※既存仕様そのまま */
+function drawNumberCircle({ n, x, y, r = 16, useCtx = ctx }) {
+  const use = useCtx;
+  use.save();
+  use.beginPath();
+  use.lineWidth = 2;
+  use.strokeStyle = "#222";
+  use.arc(x, y, r, 0, Math.PI * 2);
+  use.stroke();
+  use.font = "16px system-ui, sans-serif";
+  use.textAlign = "center";
+  use.textBaseline = "middle";
+  use.fillStyle = "#111";
+  use.fillText(String(n), x, y);
+  use.restore();
 }
 
-/* 共通：マス＋ふりがな（ふりがなは右側・大きめ） */
-function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana = "" }) {
-  ctx.save();
-  ctx.strokeStyle = "#111";
-  ctx.lineWidth = 2;
+/* 共通：マス＋ふりがな（ふりがなは右側・大きめ／左揃え＋わずかに離す）※既存の見た目を維持 */
+function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana = "", useCtx = ctx }) {
+  const use = useCtx;
+  use.save();
+  use.strokeStyle = "#111";
+  use.lineWidth = 2;
 
   const totalH = count * (box + gap) - gap;
-  ctx.strokeRect(x - box/2, y, box, totalH);
+  use.strokeRect(x - box/2, y, box, totalH);
 
   for (let i = 1; i < count; i++) {
     const yy = y + i * (box + gap) - gap/2;
-    ctx.beginPath();
-    ctx.moveTo(x - box/2, yy);
-    ctx.lineTo(x + box/2, yy);
-    ctx.stroke();
+    use.beginPath();
+    use.moveTo(x - box/2, yy);
+    use.lineTo(x + box/2, yy);
+    use.stroke();
   }
 
-  // ふりがな（右側・寄せる）
+  // ふりがな（右側・枠にほぼ密着、left 揃え／句読点補正なし）
   if (yomigana) {
     drawVerticalText({
       text: yomigana,
-      x: x + box/2 + 2,   // ほぼ密着
+      x: x + box/2 + 3,   // ★ ご指定の「ほんの少し離す」= +3px（0〜4で微調整可）
       y: y + 10,
       lineH: 26,
       font: "18px serif",
-      align: "left",      // ← left 揃えで本当に寄る（drawVerticalTextにalign対応済みなら）
-      adjustPunct: false
+      align: "left",
+      adjustPunct: false,
+      useCtx: use
     });
   }
 
-  ctx.restore();
+  use.restore();
   return totalH;
-} // ← この閉じカッコが必要！
-
+}
 
 /* ---------------- Drawing ---------------- */
 
@@ -165,7 +184,7 @@ function drawWords({ words, cols = 2 }) {
   });
 }
 
-/* B) questions 形式：番号・ふりがな・空欄・縦書き文（横長 1700x1200） */
+/* B) questions 形式：番号・ふりがな・空欄・縦書き文（横長 1700x1200）※既存の見た目を維持 */
 function drawQuestions({ questions }) {
   // 背景（横長）
   ctx.fillStyle = "#fff";
@@ -197,7 +216,7 @@ function drawQuestions({ questions }) {
 
   // 行間・マスサイズ設定（本文は詰め気味／ふりがなは個別設定）
   const CHAR_GAP = 28;   // 本文（before/after）用の縦ピッチ
-  const BOX = 104;       // 解答マス
+  const BOX = 104;       // 解答マス（現状維持）
   const BOX_GAP = 8;     // マス間
   const AFTER_GAP = 12;  // マス後の余白
   const NUM_R = 13;      // 丸数字の半径
@@ -242,9 +261,11 @@ function drawQuestions({ questions }) {
       cursorY += before.length * CHAR_GAP + 4;
     }
 
-    // ③ マス＋ふりがな（右側固定、ふりがなは枠にピタ寄せ）
+    // ③ マス＋ふりがな（右側固定、ふりがなは枠にほぼ密着）
     if (target) {
       const totalH = target.length * (BOX + BOX_GAP) - BOX_GAP;
+
+      // マス本体
       ctx.save();
       ctx.strokeStyle = "#111"; ctx.lineWidth = 2;
       ctx.strokeRect(anchorX - BOX/2, cursorY, BOX, totalH);
@@ -257,20 +278,17 @@ function drawQuestions({ questions }) {
       }
       ctx.restore();
 
-      // ★ふりがな：左揃えで本当に寄せる（句読点補正なし）
+      // ふりがな（右・left揃え・+3px）※現状維持
       if (kana) {
-        ctx.save();
-        ctx.font = "18px serif";
-        ctx.fillStyle = "#000";
-        ctx.textAlign = "left";      // ← 左端基準
-        ctx.textBaseline = "top";
-        const fx = anchorX + BOX/2 + 3; // ← 枠ほぼ密着（0〜3で微調整）
-        const fy = cursorY + 10;
-        const fLH = 26;
-        for (let k = 0; k < kana.length; k++) {
-          ctx.fillText(kana[k], fx, fy + k * fLH);
-        }
-        ctx.restore();
+        drawVerticalText({
+          text: kana,
+          x: anchorX + BOX/2 + 3,
+          y: cursorY + 10,
+          lineH: 26,
+          font: "18px serif",
+          align: "left",
+          adjustPunct: false
+        });
       }
 
       cursorY += totalH + AFTER_GAP;
@@ -284,10 +302,10 @@ function drawQuestions({ questions }) {
     ctx.restore(); // クリップ解除
   });
 
-  // 右下フッター：読み込んだファイル名を大きめ太字（スキャン/OCR向け）
+  // 右下フッター：読み込んだファイル名を大きめ太字（スキャン/OCR向け）※現状維持
   ctx.save();
-  ctx.font = "600 24px system-ui, sans-serif"; // 太め・大きめ
-  ctx.fillStyle = "#000";                      // コントラスト重視（OCR向け）
+  ctx.font = "600 24px system-ui, sans-serif";
+  ctx.fillStyle = "#000";
   ctx.textAlign = "right";
   ctx.textBaseline = "alphabetic";
   const footerText = __sourceFilename && __sourceFilename.trim()
@@ -297,6 +315,117 @@ function drawQuestions({ questions }) {
   ctx.restore();
 }
 
+/* ---------------- 解答ページ描画（追加） ---------------- */
+function drawAnswers({ questions }) {
+  if (!answersCtx) return; // #answers が無いなら何もしない（後方互換）
+
+  // 背景
+  answersCtx.fillStyle = "#fff";
+  answersCtx.fillRect(0, 0, 1700, 1200);
+
+  const PAD_X = 64;
+  const PAD_Y = 40;
+  const W = 1700 - PAD_X * 2;
+  const H = 1200 - PAD_Y * 2;
+
+  const MID_Y = PAD_Y + H / 2;
+  answersCtx.strokeStyle = "#999";
+  answersCtx.lineWidth = 1;
+  answersCtx.beginPath();
+  answersCtx.moveTo(PAD_X, MID_Y);
+  answersCtx.lineTo(PAD_X + W, MID_Y);
+  answersCtx.stroke();
+
+  const ROW_GAP_TOP = 6;
+  const ROW_GAP_BOTTOM = 6;
+  const ROW_HEIGHT = H / 2 - ROW_GAP_TOP - ROW_GAP_BOTTOM;
+
+  const COLS = 10;
+  const COL_W = W / COLS;
+
+  const CHAR_GAP = 28;  // 本文の縦ピッチ（問題と同じ）
+  const BOX = 104;
+  const BOX_GAP = 8;
+  const AFTER_GAP = 12;
+  const NUM_R = 13;
+
+  const items = questions.slice(0, 20);
+
+  items.forEach((q, i) => {
+    const row = i < 10 ? 0 : 1;
+    const colFromRight = i % 10;
+    const anchorX = PAD_X + W - (colFromRight + 0.5) * COL_W;
+
+    const rowTop = (row === 0) ? (PAD_Y + ROW_GAP_TOP) : (MID_Y + ROW_GAP_TOP);
+
+    const numCenterY = rowTop + NUM_R + 2;
+    drawNumberCircle({ n: i + 1, x: anchorX, y: numCenterY, r: NUM_R, useCtx: answersCtx });
+
+    answersCtx.save();
+    answersCtx.beginPath();
+    answersCtx.rect(PAD_X, rowTop, W, ROW_HEIGHT);
+    answersCtx.clip();
+
+    const full   = String(q.fullText || "");
+    const target = String(q.targetKanji || "");
+    const kana   = String(q.yomigana || "");
+
+    let before = "", after = full;
+    const idx = target ? full.indexOf(target) : -1;
+    if (idx >= 0) {
+      before = full.slice(0, idx);
+      after  = full.slice(idx + target.length);
+    }
+
+    let cursorY = numCenterY + NUM_R + 6;
+    if (before) {
+      drawVerticalText({ text: before, x: anchorX, y: cursorY, lineH: CHAR_GAP, useCtx: answersCtx });
+      cursorY += before.length * CHAR_GAP + 4;
+    }
+
+    if (target) {
+      // マス本体＋ふりがな（見た目は問題ページと同一）
+      const totalH = drawKanjiBoxesWithFurigana({
+        x: anchorX, y: cursorY, count: target.length, box: BOX, gap: BOX_GAP, yomigana: kana, useCtx: answersCtx
+      });
+
+      // 解答：各マスに targetKanji を縦書きで中央寄せ（現行レイアウトに干渉しない）
+      const ansLineH = BOX + BOX_GAP;               // 各マスに1文字
+      const ansFontPx = Math.max(18, Math.floor(BOX * 0.6));
+      const ansYOffset = Math.floor((BOX - ansFontPx) / 2);
+      drawVerticalText({
+        text: target,
+        x: anchorX,
+        y: cursorY + ansYOffset,
+        lineH: ansLineH,
+        font: `${ansFontPx}px serif`,
+        align: "center",
+        adjustPunct: false,
+        useCtx: answersCtx
+      });
+
+      cursorY += totalH + AFTER_GAP;
+    }
+
+    if (after) {
+      drawVerticalText({ text: after, x: anchorX, y: cursorY, lineH: CHAR_GAP, useCtx: answersCtx });
+    }
+
+    answersCtx.restore();
+  });
+
+  // 右下フッター（解答）
+  answersCtx.save();
+  answersCtx.font = "600 24px system-ui, sans-serif";
+  answersCtx.fillStyle = "#000";
+  answersCtx.textAlign = "right";
+  answersCtx.textBaseline = "alphabetic";
+  const footerA = __sourceFilename && __sourceFilename.trim()
+    ? `${__sourceFilename}（解答）`
+    : "（ファイル未指定・解答）";
+  answersCtx.fillText(footerA, 1700 - 20, 1200 - 16);
+  answersCtx.restore();
+}
 
 /* ---------------- Load / Save ---------------- */
 function loadFromJSON(obj) {
@@ -306,25 +435,26 @@ function loadFromJSON(obj) {
   let words, cols = 2;
 
   if (Array.isArray(obj.questions)) {
-    // 元サイト形式
+    // 元サイト形式（現状維持）
     __questions = obj.questions.map(q => ({
       fullText: String(q?.fullText || ""),
       targetKanji: String(q?.targetKanji || ""),
       yomigana: String(q?.yomigana || ""),
       questionType: String(q?.questionType || "")
     }));
-    __lastImportedOriginal = obj; // ラウンドトリップ保存
-    // UIのテキスト欄には target だけ入れておく（編集用）
+    __lastImportedOriginal = obj;
     words = __questions.map(q => q.targetKanji).filter(Boolean);
     $("#words").value = fromWordsList(words);
     $("#cols").value = String(cols);
-    // 描画は questions レンダラ
+
+    // 問題＆（あれば）解答
     drawQuestions({ questions: __questions });
+    if (answersCtx) drawAnswers({ questions: __questions });
     return;
   }
 
   if (Array.isArray(obj.words)) {
-    // 自サイト形式
+    // 自サイト形式（現状維持）
     words = obj.words;
     cols = obj.cols ?? 2;
     __lastImportedOriginal = null;
@@ -332,6 +462,12 @@ function loadFromJSON(obj) {
     $("#words").value = fromWordsList(words);
     $("#cols").value = String(cols);
     drawWords({ words, cols });
+
+    // words形式のとき解答ページは白塗り（存在すれば）
+    if (answersCtx) {
+      answersCtx.fillStyle = "#fff";
+      answersCtx.fillRect(0, 0, answersCanvas.width, answersCanvas.height);
+    }
     return;
   }
 
@@ -373,7 +509,7 @@ async function handleJSONFile(file) {
   try {
     const text = await readFileAsText(file);
     const obj = JSON.parse(text);
-    setSourceFilename(file?.name || "");   // ★ 追加：フッター用にファイル名を保持
+    setSourceFilename(file?.name || "");   // フッター用にファイル名を保持（現状維持）
     loadFromJSON(obj);
     alert("JSONを読み込みました");
   } catch (e) {
@@ -386,11 +522,16 @@ async function handleJSONFile(file) {
 function doGenerateFromUI() {
   if (__questions) {
     drawQuestions({ questions: __questions });
+    if (answersCtx) drawAnswers({ questions: __questions }); // 解答も更新
   } else {
     drawWords({
       words: toWordsList($("#words").value),
       cols: parseInt($("#cols").value, 10) || 2
     });
+    if (answersCtx) {
+      answersCtx.fillStyle = "#fff";
+      answersCtx.fillRect(0, 0, answersCanvas.width, answersCanvas.height);
+    }
   }
 }
 
@@ -426,21 +567,23 @@ dropzone.addEventListener("drop", (e) => {
 });
 
 /* ---------------- Initial render ---------------- */
-setupCanvasForDPR(); // ← これを必ず最初に呼ぶ
+setupCanvasForDPR();                  // 既存のまま
+setupCanvasForDPR_Answers();          // ★ 追加（#answers があればDPR反映）
+
 const { words, cols, auto } = parseParams();
-// パラメータだけで来たときは words 描画
+// パラメータだけで来たときは words 描画（現状維持）
 drawWords({ words, cols });
 if (auto === "1") {
   $("#words").value = fromWordsList(words);
   $("#cols").value = String(cols);
 }
 
-// postMessage で外部から生成命令（外部からファイル名を渡せるように）
+// postMessage で外部から生成命令（外部からファイル名を渡せるように）※現状維持＋解答も生成
 window.addEventListener("message", (ev) => {
   if (ev?.data?.type === "GENERATE") {
     const payload = ev.data.payload || {};
     if (typeof payload.filename === "string") {
-      setSourceFilename(payload.filename); // ★ 追加
+      setSourceFilename(payload.filename);
     }
     if (Array.isArray(payload.questions)) {
       loadFromJSON({ questions: payload.questions });
