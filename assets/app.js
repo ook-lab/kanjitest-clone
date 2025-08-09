@@ -264,7 +264,7 @@ function drawQuestions({ questions }) {
         ctx.fillStyle = "#000";
         ctx.textAlign = "left";      // ← 左端基準
         ctx.textBaseline = "top";
-        const fx = anchorX + BOX/2 + 2; // ← 枠ほぼ密着（0〜3で微調整）
+        const fx = anchorX + BOX/2 + 3; // ← 枠ほぼ密着（0〜3で微調整）
         const fy = cursorY + 10;
         const fLH = 26;
         for (let k = 0; k < kana.length; k++) {
