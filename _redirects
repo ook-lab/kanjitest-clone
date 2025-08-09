@@ -1,0 +1,2 @@
+# 例：/api/* を Cloud Run に中継
+# /api/*  https://your-cloud-run-url.r.run.app/:splat  200
