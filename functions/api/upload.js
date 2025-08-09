@@ -121,3 +121,11 @@ function buildMultipart(boundary, metadataJson, mime, fileBytes) {
   out.set(p4, p1.length + p2.length + p3.length);
   return out;
 }
+
+// 追加：GETで疎通確認用
+export const onRequestGet = async () => {
+  return new Response(
+    JSON.stringify({ status: "ok", message: "upload.js GET is alive" }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+};
