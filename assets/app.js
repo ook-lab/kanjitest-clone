@@ -2,6 +2,17 @@ const $ = (s) => document.querySelector(s);
 const canvas = $("#preview");
 const ctx = canvas.getContext("2d");
 
+// 追加：DPRに合わせてキャンバスをスケール（最初に1回呼ぶ）
+function setupCanvasForDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = 1200, cssH = 1700; // 見た目のサイズ（CSSピクセル）
+  canvas.style.width = cssW + "px";
+  canvas.style.height = cssH + "px";
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
 // 直近に読み込んだオリジナルJSON（ラウンドトリップ）
 let __lastImportedOriginal = null;
 // questions を持っているときはここに保持（描画で使う）
@@ -23,19 +34,20 @@ function parseParams() {
   return { words, cols, auto };
 }
 
-/* 文字を縦に並べて描画 */
+/* 共通：縦書き1文字ずつ */
 function drawVerticalText({ text, x, y, lineH = 36, font = "32px serif" }) {
   ctx.save();
   ctx.font = font;
   ctx.fillStyle = "#000";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
   for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    ctx.fillText(ch, x, y + i * lineH);
+    ctx.fillText(text[i], x, y + i * lineH);
   }
   ctx.restore();
 }
 
-/* 番号の丸 */
+/* 共通：番号の丸 */
 function drawNumberCircle({ n, x, y, r = 16 }) {
   ctx.save();
   ctx.beginPath();
@@ -51,36 +63,26 @@ function drawNumberCircle({ n, x, y, r = 16 }) {
   ctx.restore();
 }
 
-/* 縦に並んだマス（targetKanji の文字数ぶん）とフリガナ */
-function drawKanjiBoxesWithFurigana({ x, y, count, box = 40, gap = 4, yomigana = "" }) {
+/* 共通：マス＋ふりがな */
+function drawKanjiBoxesWithFurigana({ x, y, count, box = 42, gap = 6, yomigana = "" }) {
   ctx.save();
   ctx.strokeStyle = "#111";
   ctx.lineWidth = 2;
 
-  // 外枠（縦長の長方形）
   const totalH = count * (box + gap) - gap;
-  ctx.strokeRect(x, y, box, totalH);
-
-  // 仕切り線
+  ctx.strokeRect(x - box/2, y, box, totalH);
   for (let i = 1; i < count; i++) {
     const yy = y + i * (box + gap) - gap/2;
     ctx.beginPath();
-    ctx.moveTo(x, yy);
-    ctx.lineTo(x + box, yy);
+    ctx.moveTo(x - box/2, yy);
+    ctx.lineTo(x + box/2, yy);
     ctx.stroke();
   }
-
-  // フリガナ（箱の左側に縦書きで）
   if (yomigana) {
-    drawVerticalText({
-      text: yomigana,
-      x: x - 26,
-      y: y + 24,
-      lineH: 20,
-      font: "14px serif"
-    });
+    drawVerticalText({ text: yomigana, x: x - box/2 - 22, y: y + 8, lineH: 20, font: "14px serif" });
   }
   ctx.restore();
+  return totalH;
 }
 
 /* ---------------- Drawing ---------------- */
@@ -89,11 +91,11 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 40, gap = 4, yomigana =
 function drawWords({ words, cols = 2 }) {
   // 背景
   ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, 1200, 1700);
 
   const padding = 80;
-  const contentW = canvas.width - padding * 2;
-  const contentH = canvas.height - padding * 2;
+  const contentW = 1200 - padding * 2;
+  const contentH = 1700 - padding * 2;
 
   // 外枠
   ctx.strokeStyle = "#e5e5e5";
@@ -113,7 +115,6 @@ function drawWords({ words, cols = 2 }) {
     const xRight = padding + colWidth * (col + 1) - 24;
     const yTop = padding + 64 + row * lineGap;
 
-    // 縦：一文字ずつ
     const step = 34;
     for (let k = 0; k < w.length; k++) {
       const ch = w[k];
@@ -122,101 +123,96 @@ function drawWords({ words, cols = 2 }) {
       ctx.fillText(ch, x, y);
     }
 
-    // マス枠
     const width = step * w.length + 24;
     ctx.strokeStyle = "#ddd";
     ctx.strokeRect(xRight - width + 12, yTop - 40, width, 48);
   });
 }
 
-/* B) questions 形式：番号・フリガナ・空欄・縦書き文（2段×10問） */
+/* B) questions 形式：番号・ふりがな・空欄・縦書き文（2段×10問） */
 function drawQuestions({ questions }) {
-  // 背景
+  // 背景（CSSピクセル基準でクリア）
   ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, 1200, 1700);
 
-  const paddingX = 60;
-  const paddingY = 60;
-  const contentW = canvas.width - paddingX * 2;
-  const contentH = canvas.height - paddingY * 2;
+  // 版面設定
+  const PAD_X = 64;
+  const PAD_Y = 64;
+  const W = 1200 - PAD_X * 2;
+  const H = 1700 - PAD_Y * 2;
 
-  // セパレータ（中央）
+  // 中央のセパレータ
+  const MID_Y = PAD_Y + H / 2;
   ctx.strokeStyle = "#999";
   ctx.lineWidth = 1;
-  const midY = paddingY + contentH / 2;
   ctx.beginPath();
-  ctx.moveTo(paddingX, midY);
-  ctx.lineTo(paddingX + contentW, midY);
+  ctx.moveTo(PAD_X, MID_Y);
+  ctx.lineTo(PAD_X + W, MID_Y);
   ctx.stroke();
 
-  // 2段×10列。右→左に並べる（紙面の雰囲気寄せ）
-  const cols = 10;
-  const colW = contentW / cols;
-  const topRowY = paddingY + 20;
-  const bottomRowY = midY + 20;
+  // 列配置：右→左に10列
+  const COLS = 10;
+  const COL_W = W / COLS;
 
-  const charGap = 36;          // 文字の縦ピッチ
-  const boxSize = 42;          // マスの一辺
-  const boxGap = 6;            // マスとマスの隙間
-  const afterTextGap = 14;     // 箱の後の文章の余白
+  // タイプグラフィ
+  const CHAR_GAP = 36;
+  const BOX = 42;
+  const BOX_GAP = 6;
+  const AFTER_GAP = 14;
+  const NUM_R = 14;
 
-  questions.slice(0, 20).forEach((q, i) => {
-    const row = i < 10 ? 0 : 1;
-    const col = i % 10;
-    const xAnchor = paddingX + contentW - (col + 0.5) * colW; // 右詰め寄り
-    const startY = row === 0 ? topRowY : bottomRowY;
+  const items = questions.slice(0, 20);
+  items.forEach((q, i) => {
+    const row = i < 10 ? 0 : 1;                   // 上段/下段
+    const colFromRight = i % 10;                  // 右から0..9
+    const anchorX = PAD_X + W - (colFromRight + 0.5) * COL_W; // 列の中央
+    const startY = (row === 0 ? PAD_Y : MID_Y) + 30;
 
-    // ① 番号（上側に）
-    drawNumberCircle({ n: i + 1, x: xAnchor, y: startY - 10, r: 14 });
+    // ① 番号
+    drawNumberCircle({ n: i + 1, x: anchorX, y: startY - 16, r: NUM_R });
 
-    // ② 文を targetKanji で分割
-    const full = String(q.fullText || "");
+    const full  = String(q.fullText || "");
     const target = String(q.targetKanji || "");
-    const kana = String(q.yomigana || "");
+    const kana  = String(q.yomigana || "");
+
+    // ② target で分割
     let before = "", after = full;
-    if (target && full.includes(target)) {
-      const parts = full.split(target);
-      before = parts[0] || "";
-      after  = (parts[1] || "");
+    const idx = target ? full.indexOf(target) : -1;
+    if (idx >= 0) {
+      before = full.slice(0, idx);
+      after  = full.slice(idx + target.length);
     }
 
-    // ③ 縦書きで before
-    let cursorY = startY + 12;
+    // ③ before
+    let cursorY = startY + 6;
     if (before) {
-      drawVerticalText({ text: before, x: xAnchor, y: cursorY, lineH: charGap });
-      cursorY += before.length * charGap + 8;
+      drawVerticalText({ text: before, x: anchorX, y: cursorY, lineH: CHAR_GAP });
+      cursorY += before.length * CHAR_GAP + 6;
     }
 
-    // ④ 空欄（targetKanji の文字数分）＋フリガナ
+    // ④ マス＋ふりがな
     if (target) {
-      drawKanjiBoxesWithFurigana({
-        x: xAnchor - boxSize / 2,
-        y: cursorY,
-        count: target.length,
-        box: boxSize,
-        gap: boxGap,
-        yomigana: kana
-      });
-      cursorY += target.length * (boxSize + boxGap) - boxGap + afterTextGap;
+      const boxH = drawKanjiBoxesWithFurigana({ x: anchorX, y: cursorY, count: target.length, box: BOX, gap: BOX_GAP, yomigana: kana });
+      cursorY += boxH + AFTER_GAP;
     }
 
-    // ⑤ 縦書きで after
+    // ⑤ after
     if (after) {
-      drawVerticalText({ text: after, x: xAnchor, y: cursorY, lineH: charGap });
+      drawVerticalText({ text: after, x: anchorX, y: cursorY, lineH: CHAR_GAP });
     }
   });
 
-  // 右下にクレジットっぽい表示（雰囲気）
+  // 右下のクレジット
   ctx.save();
   ctx.font = "14px system-ui, sans-serif";
   ctx.fillStyle = "#777";
   ctx.textAlign = "right";
-  ctx.fillText("漢字テストメーカー", canvas.width - 20, canvas.height - 16);
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("漢字テストメーカー", 1200 - 20, 1700 - 16);
   ctx.restore();
 }
 
 /* ---------------- Load / Save ---------------- */
-
 function loadFromJSON(obj) {
   if (typeof obj !== "object" || obj === null) throw new Error("JSONがオブジェクトではありません");
 
@@ -343,6 +339,7 @@ dropzone.addEventListener("drop", (e) => {
 });
 
 /* ---------------- Initial render ---------------- */
+setupCanvasForDPR(); // ← これを必ず最初に呼ぶ
 const { words, cols, auto } = parseParams();
 // パラメータだけで来たときは words 描画
 drawWords({ words, cols });
