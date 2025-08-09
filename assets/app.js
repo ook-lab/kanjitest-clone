@@ -2,10 +2,10 @@ const $ = (s) => document.querySelector(s);
 const canvas = $("#preview");
 const ctx = canvas.getContext("2d");
 
-// 追加：DPRに合わせてキャンバスをスケール（最初に1回呼ぶ）
+// 追加：DPRに合わせてキャンバスをスケール（横長 1700x1200）
 function setupCanvasForDPR() {
   const dpr = window.devicePixelRatio || 1;
-  const cssW = 1200, cssH = 1700; // 見た目のサイズ（CSSピクセル）
+  const cssW = 1700, cssH = 1200; // ← 横長
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
   canvas.width = Math.floor(cssW * dpr);
@@ -34,7 +34,7 @@ function parseParams() {
   return { words, cols, auto };
 }
 
-/* 共通：縦書き1文字ずつ（句読点の位置補正付き） */
+/* 共通：縦書き1文字ずつ（句読点の位置補正 強め） */
 function drawVerticalText({ text, x, y, lineH = 36, font = "32px serif" }) {
   ctx.save();
   ctx.font = font;
@@ -42,11 +42,11 @@ function drawVerticalText({ text, x, y, lineH = 36, font = "32px serif" }) {
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
 
-  // 句読点・記号などの微調整（右へずらす）
+  // 句読点・記号を右に寄せる（前回より強め）
   const xAdjust = {
-    "。": 6, "、": 6, "．": 6, "，": 6,
-    "・": 3, "！": 2, "？": 2,
-    "」": 2, "』": 2, "）": 2, "］": 2, "｝": 2
+    "。": 12, "、": 12, "．": 12, "，": 12,
+    "・": 8, "！": 6, "？": 6,
+    "」": 5, "』": 5, "）": 5, "］": 5, "｝": 5
   };
 
   for (let i = 0; i < text.length; i++) {
@@ -104,15 +104,14 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 42, gap = 6, yomigana =
 
 /* ---------------- Drawing ---------------- */
 
-/* A) words 形式（簡易レイアウト：従来） */
 function drawWords({ words, cols = 2 }) {
   // 背景
   ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, 1200, 1700);
+  ctx.fillRect(0, 0, 1700, 1200);
 
   const padding = 80;
-  const contentW = 1200 - padding * 2;
-  const contentH = 1700 - padding * 2;
+  const contentW = 1700 - padding * 2;  // ← 横長幅に
+  const contentH = 1200 - padding * 2;  // ← 横長高さに
 
   // 外枠
   ctx.strokeStyle = "#e5e5e5";
