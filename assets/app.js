@@ -252,7 +252,7 @@ function drawQuestions({ questions }) {
       if (kana) {
         drawVerticalText({
           text: kana,
-          x: anchorX + BOX/2 + 30,
+          x: anchorX + BOX/2 + 10,
           y: cursorY + 10,
           lineH: 26,
           font: "18px serif"
