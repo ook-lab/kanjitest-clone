@@ -180,7 +180,7 @@ function drawQuestions({ questions }) {
   const COL_W = W / COLS;
 
   // 行間・マスサイズ設定
-  const CHAR_GAP = 44;   // 本文（before/after）用行ピッチ（詰める）
+  const CHAR_GAP = 36;   // 本文（before/after）用行ピッチ（詰める）
   const BOX = 128;       // ★ マスを更に大きく（前104 → +2段階）
   const BOX_GAP = 8;     // マス間の間隔
   const AFTER_GAP = 12;  // マス後の余白
