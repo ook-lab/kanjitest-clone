@@ -74,17 +74,15 @@ function drawNumberCircle({ n, x, y, r = 16 }) {
   ctx.restore();
 }
 
-//* 共通：マス＋ふりがな（ふりがなは右側に配置） */
-function drawKanjiBoxesWithFurigana({ x, y, count, box = 42, gap = 6, yomigana = "" }) {
+// 共通：マス＋ふりがな（ふりがなは右側に配置）
+function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana = "" }) {
   ctx.save();
   ctx.strokeStyle = "#111";
   ctx.lineWidth = 2;
 
   const totalH = count * (box + gap) - gap;
-  // 縦の外枠（x は列の中心）
   ctx.strokeRect(x - box/2, y, box, totalH);
 
-  // 仕切り線
   for (let i = 1; i < count; i++) {
     const yy = y + i * (box + gap) - gap/2;
     ctx.beginPath();
@@ -93,14 +91,20 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 42, gap = 6, yomigana =
     ctx.stroke();
   }
 
-  // ふりがな：右側に縦書き
+  // ふりがな（右側に配置、間隔も広げる）
   if (yomigana) {
-    drawVerticalText({ text: yomigana, x: x + box/2 + 22, y: y + 8, lineH: 20, font: "14px serif" });
+    drawVerticalText({
+      text: yomigana,
+      x: x + box/2 + 26, // 24→26
+      y: y + 12,         // 10→12
+      lineH: 24,         // 22→24
+      font: "14px serif"
+    });
   }
+
   ctx.restore();
   return totalH;
 }
-
 
 /* ---------------- Drawing ---------------- */
 
@@ -176,8 +180,8 @@ function drawQuestions({ questions }) {
   const COL_W = W / COLS;
 
  // タイポ
-const CHAR_GAP = 36;   // 行ピッチ（少しだけ詰める）
-const BOX = 64;        // ★ 解答四角を大きく（40 -> 56）
+const CHAR_GAP = 56;   // 行ピッチ（少しだけ詰める）
+const BOX = 104;        // ★ 解答四角を大きく（40 -> 56）
 const BOX_GAP = 8;     // ★ マス間も少し広げる（6 -> 8）
 const AFTER_GAP = 12;  // マス後の余白
 const NUM_R = 13;      // 丸の半径
