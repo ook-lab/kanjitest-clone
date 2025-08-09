@@ -594,50 +594,42 @@ window.addEventListener("message", (ev) => {
     }
   }
 });
-// ===== Drive保存: 1ページごとにPNGで送信 =====
-const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzRxyWM0PXk8qXrKfYH3vaWzubhaiQU3KFPsfbyBhdzSjZqyKafhqffQRgF1QdtkYKz/exec'; // ←デプロイURL
-
+// ===== Drive保存（Cloudflare Pages Functions 版 /api/upload）=====
 function canvasToDataURL(cvs, mime = 'image/png') {
-  return cvs.toDataURL(mime); // 内部DPRは既にsetupCanvasForDPRで反映済み
+  return cvs.toDataURL(mime); // DPRはsetupCanvasForDPRで反映済み
 }
 
-async function uploadDataURLToGAS({ filename, dataUrl, mimeType = 'image/png' }) {
-  // 手軽さ優先: CORS回避のため no-cors（レスポンスは読めませんが保存はされます）
-  await fetch(WEBAPP_URL, {
+async function uploadDataURL({ filename, dataUrl, mimeType = 'image/png' }) {
+  const res = await fetch('/api/upload', {
     method: 'POST',
-    mode: 'no-cors',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename, mimeType, dataUrl })
+    body: JSON.stringify({ filename, dataUrl, mimeType })
   });
+  if (!res.ok) {
+    const text = await res.text().catch(()=> '');
+    throw new Error(`upload failed: ${res.status} ${text}`);
+  }
+  return await res.json().catch(()=> ({}));
 }
 
 async function saveEachPageToDrive() {
-  try {
-    const baseName = (__sourceFilename && __sourceFilename.trim())
-      ? __sourceFilename.replace(/\.[^.]+$/, '') // 拡張子除去
-      : 'kanji-test';
+  const baseName = (__sourceFilename && __sourceFilename.trim())
+    ? __sourceFilename.replace(/\.[^.]+$/, '')
+    : 'kanji-test';
 
-    // 問題ページ（preview）
-    const qName = `${baseName}_問題.png`;
-    const qUrl  = canvasToDataURL(canvas, 'image/png');
-    await uploadDataURLToGAS({ filename: qName, dataUrl: qUrl });
+  // 問題ページ
+  const qUrl = canvasToDataURL(canvas, 'image/png');
+  await uploadDataURL({ filename: `${baseName}_問題.png`, dataUrl: qUrl });
 
-    // 解答ページ（answers がある場合）
-    if (typeof answersCanvas !== 'undefined' && answersCanvas) {
-      const aName = `${baseName}_解答.png`;
-      const aUrl  = canvasToDataURL(answersCanvas, 'image/png');
-      await uploadDataURLToGAS({ filename: aName, dataUrl: aUrl });
-    }
-
-    alert('ドライブへの保存を開始しました（数秒後にフォルダでご確認ください）');
-  } catch (e) {
-    console.error(e);
-    alert('保存エラー: ' + e.message);
+  // 解答ページがある場合
+  if (typeof answersCanvas !== 'undefined' && answersCanvas) {
+    const aUrl = canvasToDataURL(answersCanvas, 'image/png');
+    await uploadDataURL({ filename: `${baseName}_解答.png`, dataUrl: aUrl });
   }
+
+  alert('Driveへ保存しました。フォルダをご確認ください。');
 }
 
-// ボタン紐付け
+// ボタン紐付け（ID: save-to-drive）
 const saveBtn = document.querySelector('#save-to-drive');
-if (saveBtn) {
-  saveBtn.addEventListener('click', () => saveEachPageToDrive());
-}
+if (saveBtn) saveBtn.addEventListener('click', saveEachPageToDrive);
