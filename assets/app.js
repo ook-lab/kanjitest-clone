@@ -42,28 +42,34 @@ function parseParams() {
   return { words, cols, auto };
 }
 
-/* 共通：縦書き1文字ずつ（句読点の位置補正 強め） */
-function drawVerticalText({ text, x, y, lineH = 36, font = "32px serif" }) {
+/* 共通：縦書き1文字ずつ（句読点の位置補正を任意で） */
+function drawVerticalText({
+  text, x, y,
+  lineH = 36,
+  font = "32px serif",
+  align = "center",           // ★ 追加
+  adjustPunct = true          // ★ 追加: 句読点右寄せの有無
+}) {
   ctx.save();
   ctx.font = font;
   ctx.fillStyle = "#000";
-  ctx.textAlign = "center";
+  ctx.textAlign = align;       // ★ 指定揃えを反映
   ctx.textBaseline = "top";
 
-  // 句読点・記号を右に寄せる
-  const xAdjust = {
+  const xAdjust = adjustPunct ? {
     "。": 24, "、": 24, "．": 24, "，": 24,
     "・": 12, "！": 10, "？": 10,
     "」": 8, "』": 8, "）": 8, "］": 8, "｝": 8
-  };
+  } : null;
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    const dx = xAdjust[ch] || 0;
+    const dx = xAdjust ? (xAdjust[ch] || 0) : 0;
     ctx.fillText(ch, x + dx, y + i * lineH);
   }
   ctx.restore();
 }
+
 
 /* 共通：番号の丸 */
 function drawNumberCircle({ n, x, y, r = 16 }) {
@@ -98,20 +104,19 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana =
     ctx.stroke();
   }
 
-  // ふりがな（右側・大きめ。OCR/視認性を上げる）
-  if (yomigana) {
-    drawVerticalText({
-      text: yomigana,
-      x: x + box/2 + 6,   // 右へオフセット（見やすさ優先）
-      y: y + 8,
-      lineH: 26,
-      font: "22px serif"   // ★ 14px → 22px に拡大
-    });
-  }
-
-  ctx.restore();
-  return totalH;
+  // ふりがな（右側・大きめ・箱に寄せる）
+if (yomigana) {
+  drawVerticalText({
+    text: yomigana,
+    x: x + box/2 + 2,   // ★ 6 → 2（ほぼ密着。必要なら 0〜4 で調整）
+    y: y + 10,
+    lineH: 26,
+    font: "18px serif",
+    align: "left",      // ★ 左端基準で描く
+    adjustPunct: false  // ふりがなは句読点補正なし（任意）
+  });
 }
+
 
 /* ---------------- Drawing ---------------- */
 
