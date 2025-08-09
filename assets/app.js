@@ -594,3 +594,50 @@ window.addEventListener("message", (ev) => {
     }
   }
 });
+// ===== Drive保存: 1ページごとにPNGで送信 =====
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzRxyWM0PXk8qXrKfYH3vaWzubhaiQU3KFPsfbyBhdzSjZqyKafhqffQRgF1QdtkYKz/exec'; // ←デプロイURL
+
+function canvasToDataURL(cvs, mime = 'image/png') {
+  return cvs.toDataURL(mime); // 内部DPRは既にsetupCanvasForDPRで反映済み
+}
+
+async function uploadDataURLToGAS({ filename, dataUrl, mimeType = 'image/png' }) {
+  // 手軽さ優先: CORS回避のため no-cors（レスポンスは読めませんが保存はされます）
+  await fetch(WEBAPP_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename, mimeType, dataUrl })
+  });
+}
+
+async function saveEachPageToDrive() {
+  try {
+    const baseName = (__sourceFilename && __sourceFilename.trim())
+      ? __sourceFilename.replace(/\.[^.]+$/, '') // 拡張子除去
+      : 'kanji-test';
+
+    // 問題ページ（preview）
+    const qName = `${baseName}_問題.png`;
+    const qUrl  = canvasToDataURL(canvas, 'image/png');
+    await uploadDataURLToGAS({ filename: qName, dataUrl: qUrl });
+
+    // 解答ページ（answers がある場合）
+    if (typeof answersCanvas !== 'undefined' && answersCanvas) {
+      const aName = `${baseName}_解答.png`;
+      const aUrl  = canvasToDataURL(answersCanvas, 'image/png');
+      await uploadDataURLToGAS({ filename: aName, dataUrl: aUrl });
+    }
+
+    alert('ドライブへの保存を開始しました（数秒後にフォルダでご確認ください）');
+  } catch (e) {
+    console.error(e);
+    alert('保存エラー: ' + e.message);
+  }
+}
+
+// ボタン紐付け
+const saveBtn = document.querySelector('#save-to-drive');
+if (saveBtn) {
+  saveBtn.addEventListener('click', () => saveEachPageToDrive());
+}
