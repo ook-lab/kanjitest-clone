@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>漢字テスト（オートメーション用クローン）</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <main>
+    <h1>漢字テスト（クローン）</h1>
+
+    <section class="controls">
+      <label for="words">語彙（改行/カンマ区切り）</label>
+      <textarea id="words" data-testid="words-input" rows="8">漢字
+読み
+例文</textarea>
+
+      <div class="row">
+        <label for="cols">列数</label>
+        <input id="cols" data-testid="cols-input" type="number" min="1" max="4" value="2" />
+      </div>
+
+      <div class="row">
+        <button id="generate" data-testid="generate-btn">生成</button>
+        <button id="download" data-testid="download-btn">PNG保存</button>
+      </div>
+    </section>
+
+    <section class="preview">
+      <canvas id="preview" data-testid="canvas" width="1200" height="1700"></canvas>
+    </section>
+  </main>
+
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
