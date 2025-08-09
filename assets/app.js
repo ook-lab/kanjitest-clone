@@ -179,13 +179,13 @@ function drawQuestions({ questions }) {
   const COLS = 10;
   const COL_W = W / COLS;
 
- // タイポ
-const CHAR_GAP = 56;   // 行ピッチ（少しだけ詰める）
-const BOX = 104;        // ★ 解答四角を大きく（40 -> 56）
-const BOX_GAP = 8;     // ★ マス間も少し広げる（6 -> 8）
-const AFTER_GAP = 12;  // マス後の余白
-const NUM_R = 13;      // 丸の半径
-const AFTER_NUM_PADDING = 6; // 丸の直後の余白
+  // 行間・マスサイズ設定
+  const CHAR_GAP = 44;   // 本文（before/after）用行ピッチ（詰める）
+  const BOX = 128;       // ★ マスを更に大きく（前104 → +2段階）
+  const BOX_GAP = 8;     // マス間の間隔
+  const AFTER_GAP = 12;  // マス後の余白
+  const NUM_R = 13;      // 丸数字の半径
+  const AFTER_NUM_PADDING = 6; // 丸数字直後の余白
 
   const items = questions.slice(0, 20);
 
@@ -194,14 +194,14 @@ const AFTER_NUM_PADDING = 6; // 丸の直後の余白
     const colFromRight = i % 10;                // 右から0..9
     const anchorX = PAD_X + W - (colFromRight + 0.5) * COL_W;
 
-    // 段の上端（丸はクリップ前に描く）
+    // 段の上端
     const rowTop = (row === 0) ? (PAD_Y + ROW_GAP_TOP) : (MID_Y + ROW_GAP_TOP);
 
-    // ① 丸数字はクリップの外で描く（上が欠けないよう中心Yを十分下げる）
+    // ① 丸数字は段外で描画
     const numCenterY = rowTop + NUM_R + 2;
     drawNumberCircle({ n: i + 1, x: anchorX, y: numCenterY, r: NUM_R });
 
-    // 以降は段内のみをクリップして本文・マスを描画
+    // 以降は段内のみクリップ
     ctx.save();
     ctx.beginPath();
     ctx.rect(PAD_X, rowTop, W, ROW_HEIGHT);
@@ -211,7 +211,7 @@ const AFTER_NUM_PADDING = 6; // 丸の直後の余白
     const target = String(q.targetKanji || "");
     const kana   = String(q.yomigana || "");
 
-    // target で本文を分割
+    // target で本文分割
     let before = "", after = full;
     const idx = target ? full.indexOf(target) : -1;
     if (idx >= 0) {
@@ -219,14 +219,19 @@ const AFTER_NUM_PADDING = 6; // 丸の直後の余白
       after  = full.slice(idx + target.length);
     }
 
-    // ② 本文（before）
+    // ② 本文（before）※本文のみ詰める
     let cursorY = numCenterY + NUM_R + AFTER_NUM_PADDING;
     if (before) {
-      drawVerticalText({ text: before, x: anchorX, y: cursorY, lineH: CHAR_GAP });
+      drawVerticalText({
+        text: before,
+        x: anchorX,
+        y: cursorY,
+        lineH: CHAR_GAP
+      });
       cursorY += before.length * CHAR_GAP + 4;
     }
 
-    // ③ マス＋ふりがな（※ふりがな＝右側）
+    // ③ マス＋ふりがな（右側固定、ふりがな詰めない）
     if (target) {
       const totalH = target.length * (BOX + BOX_GAP) - BOX_GAP;
       ctx.save();
@@ -241,17 +246,28 @@ const AFTER_NUM_PADDING = 6; // 丸の直後の余白
       }
       ctx.restore();
 
-      // ★ここを右側に修正★
+      // ふりがなは右側に表示（間隔詰めない）
       if (kana) {
-        drawVerticalText({ text: kana, x: anchorX + BOX/2 + 22, y: cursorY + 8, lineH: 20, font: "14px serif" });
+        drawVerticalText({
+          text: kana,
+          x: anchorX + BOX/2 + 22,
+          y: cursorY + 8,
+          lineH: 20,
+          font: "14px serif"
+        });
       }
 
       cursorY += totalH + AFTER_GAP;
     }
 
-    // ④ 本文（after）
+    // ④ 本文（after）※本文のみ詰める
     if (after) {
-      drawVerticalText({ text: after, x: anchorX, y: cursorY, lineH: CHAR_GAP });
+      drawVerticalText({
+        text: after,
+        x: anchorX,
+        y: cursorY,
+        lineH: CHAR_GAP
+      });
     }
 
     ctx.restore(); // クリップ解除
@@ -266,6 +282,7 @@ const AFTER_NUM_PADDING = 6; // 丸の直後の余白
   ctx.fillText("漢字テストメーカー", 1700 - 20, 1200 - 16);
   ctx.restore();
 }
+
 
 /* ---------------- Load / Save ---------------- */
 function loadFromJSON(obj) {
