@@ -102,7 +102,7 @@ function drawKanjiBoxesWithFurigana({ x, y, count, box = 64, gap = 8, yomigana =
   if (yomigana) {
     drawVerticalText({
       text: yomigana,
-      x: x + box/2 + 20,   // 右へオフセット（見やすさ優先）
+      x: x + box/2 + 10,   // 右へオフセット（見やすさ優先）
       y: y + 10,
       lineH: 26,
       font: "22px serif"   // ★ 14px → 22px に拡大
