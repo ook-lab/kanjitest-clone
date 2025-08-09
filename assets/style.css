@@ -16,3 +16,30 @@ button { padding: 8px 12px; font: inherit; cursor: pointer; }
   border: 1px solid #ccc;
   background: #fff;
 }
+/* ---- 印刷用（左右余白ゼロ＆キャンバスをぴったり出力） ---- */
+@page {
+  size: A4 landscape;   /* 横向き */
+  margin: 0;            /* 余白ゼロ：ブラウザのデフォルト余白を消す */
+}
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  main, .preview {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+  /* キャンバスをページいっぱいに中央配置（拡大縮小なしで出すなら width/height 固定でもOK） */
+  #preview {
+    display: block;
+    margin: 0 auto !important;
+    width: 100vw !important;
+    height: auto !important;
+  }
+}
