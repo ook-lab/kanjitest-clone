@@ -176,8 +176,8 @@ function drawQuestions({ questions }) {
   const COL_W = W / COLS;
 
  // タイポ
-const CHAR_GAP = 32;   // 行ピッチ（少しだけ詰める）
-const BOX = 56;        // ★ 解答四角を大きく（40 -> 56）
+const CHAR_GAP = 36;   // 行ピッチ（少しだけ詰める）
+const BOX = 64;        // ★ 解答四角を大きく（40 -> 56）
 const BOX_GAP = 8;     // ★ マス間も少し広げる（6 -> 8）
 const AFTER_GAP = 12;  // マス後の余白
 const NUM_R = 13;      // 丸の半径
