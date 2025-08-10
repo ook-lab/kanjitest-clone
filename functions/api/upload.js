@@ -1,11 +1,12 @@
-// GASへ「application/x-www-form-urlencoded」で中継（安定版・最終）
+// /functions/api/upload.js — GASへ multipart/form-data で中継（確定版）
+
 export const onRequestPost = async ({ request, env }) => {
   try {
     const gasUrl = env.GAS_WEBAPP_URL;
     const secret = env.UPLOAD_SECRET;
     if (!gasUrl || !secret) return j({ ok:false, error:"missing env GAS_WEBAPP_URL / UPLOAD_SECRET" }, 500);
 
-    // 受け取り（multipart or JSON 両対応）
+    // 1) クライアントから受信（multipart or JSON 両対応）
     let filename = "", mimeType = "image/png", blob = null;
     const ct = (request.headers.get("content-type") || "").toLowerCase();
 
@@ -24,38 +25,31 @@ export const onRequestPost = async ({ request, env }) => {
       filename = String(payload?.filename || "");
       mimeType = String(payload?.mimeType || "image/png");
       const dataUrl = String(payload?.dataUrl || "");
-      if (!dataUrl.startsWith("data:") || !dataUrl.includes(",")) return j({ ok:false, error:"invalid dataUrl" }, 400);
+      if (!dataUrl.startsWith("data:") || !dataUrl.includes(",")) {
+        return j({ ok:false, error:"invalid dataUrl" }, 400);
+      }
+      // dataURL → Blob
       const resp = await fetch(dataUrl);
       blob = await resp.blob();
     }
 
     if (!filename) return j({ ok:false, error:"filename required" }, 400);
 
-    // Blob → base64 dataURL
-    const u8 = new Uint8Array(await blob.arrayBuffer());
-    const b64 = bytesToBase64(u8);
-    const dataUrlOut = `data:${mimeType};base64,${b64}`;
-
-    // 署名（filename をメッセージ）
+    // 2) 署名（filename をメッセージに HMAC-SHA256 → base64）
     const signature = await hmacBase64(filename, secret);
 
-    // フォームエンコードで送る（GAS は e.parameter で確実に取れる）
-    const body = new URLSearchParams({
-      filename,
-      mimeType,
-      signature,
-      payload: JSON.stringify({ filename, mimeType, dataUrl: dataUrlOut, signature })
-    });
+    // 3) GAS へそのまま multipart で中継
+    const fd = new FormData();
+    fd.append("filename", filename);
+    fd.append("mimeType", mimeType);
+    fd.append("signature", signature);                          // ← GAS が検証
+    fd.append("file", new File([blob], filename, { type: mimeType })); // ← ここがポイント
 
-    const gasRes = await fetch(gasUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body
-    });
-
+    const gasRes = await fetch(gasUrl, { method: "POST", body: fd });
     const text = await gasRes.text();
     if (!gasRes.ok) return j({ ok:false, error:"GAS error", detail:text }, 502);
 
+    // GASのJSONをそのまま返却
     return new Response(text, { status: 200, headers: { "Content-Type":"application/json" } });
   } catch (e) {
     return j({ ok:false, error:String(e?.message||e) }, 500);
@@ -63,7 +57,7 @@ export const onRequestPost = async ({ request, env }) => {
 };
 
 export const onRequestGet = async () =>
-  new Response(JSON.stringify({ status:"ok", via:"cf-proxy", target:"gas-form" }), {
+  new Response(JSON.stringify({ status:"ok", via:"cf-proxy", target:"gas-multipart" }), {
     status: 200, headers: { "Content-Type":"application/json" }
   });
 
@@ -78,4 +72,3 @@ async function hmacBase64(message, secret) {
   const b = new Uint8Array(sig); let s = ""; for (let i=0;i<b.length;i++) s += String.fromCharCode(b[i]);
   return btoa(s);
 }
-function bytesToBase64(u8) { let s=""; for (let i=0;i<u8.length;i++) s+=String.fromCharCode(u8[i]); return btoa(s); }
