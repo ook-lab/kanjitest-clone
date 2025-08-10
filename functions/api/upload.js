@@ -1,9 +1,24 @@
 // /functions/api/upload.js
 // Cloudflare Pages Functions → Google Drive へ dataURL(PNG等) を保存
+// ※ POST受信直後に生ボディをログ → その後 JSON.parse（原因切り分け用）
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const { filename, dataUrl, mimeType = "image/png" } = await request.json().catch(() => ({}));
+    // 0) 生ボディを取得してログ
+    const raw = await request.text();
+    console.log("=== /api/upload RAW START ===");
+    console.log(raw);
+    console.log("=== /api/upload RAW END ===");
+
+    // 1) JSONへパース（改行等で壊れていればここで検知）
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (e) {
+      return j({ ok: false, error: "bad json", detail: String(e.message || e) }, 400);
+    }
+
+    const { filename, dataUrl, mimeType = "image/png" } = payload;
     if (!filename || !dataUrl?.startsWith("data:")) {
       return j({ ok: false, error: "invalid payload" }, 400);
     }
@@ -11,17 +26,10 @@ export const onRequestPost = async ({ request, env }) => {
       return j({ ok: false, error: "missing env vars" }, 500);
     }
 
-   let creds;
-try {
-  // まずはそのまま（\n がエスケープ済みのケース）
-  creds = JSON.parse(env.GOOGLE_CREDENTIALS);
-} catch {
-  // 生の改行で壊れているケース → 生の改行を \n にエスケープして再挑戦
-  const fixed = env.GOOGLE_CREDENTIALS.replace(/\n/g, "\\n");
-  creds = JSON.parse(fixed);
-}
+    // 2) サービスアカウント鍵：\n → 実改行 に置換してから JSON.parse
+    const creds = JSON.parse(env.GOOGLE_CREDENTIALS.replace(/\\n/g, "\n"));
 
-    // 1) サービスアカウントで JWT 作成 → アクセストークン取得
+    // 3) JWT 作成（RS256）
     const now = Math.floor(Date.now() / 1000);
     const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
     const claim = b64url(JSON.stringify({
@@ -33,7 +41,6 @@ try {
     }));
     const toSign = new TextEncoder().encode(`${header}.${claim}`);
 
-    // PEM → PKCS#8 (ArrayBuffer) → Sign(RS256)
     const keyBuf = pemToPkcs8(creds.private_key);
     const key = await crypto.subtle.importKey(
       "pkcs8",
@@ -59,14 +66,14 @@ try {
     }
     const { access_token } = JSON.parse(tokenText);
 
-    // 2) dataURL → バイナリ化
+    // 4) dataURL → バイナリ
     const comma = dataUrl.indexOf(",");
-    const meta = dataUrl.slice(5, comma); // "image/png;base64" など
+    const meta = dataUrl.slice(5, comma); // e.g. "image/png;base64"
     const finalMime = mimeType || meta.split(";")[0] || "application/octet-stream";
     const b64 = dataUrl.slice(comma + 1);
     const fileBytes = b64ToBytes(b64);
 
-    // 3) Drive へ multipart/related でアップロード
+    // 5) Drive multipart/related アップロード
     const metadata = JSON.stringify({ name: filename, parents: [env.DRIVE_FOLDER_ID] });
     const boundary = "bnd_" + Math.random().toString(16).slice(2);
     const body = buildMultipart(boundary, metadata, finalMime, fileBytes);
@@ -90,7 +97,12 @@ try {
   }
 };
 
-/* ---------- helpers ---------- */
+// 疎通確認（GET）
+export const onRequestGet = async () =>
+  new Response(JSON.stringify({ status: "ok", message: "upload.js GET is alive" }),
+    { status: 200, headers: { "Content-Type": "application/json" } });
+
+// ---------- helpers ----------
 const j = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 
@@ -128,11 +140,3 @@ function buildMultipart(boundary, metadataJson, mime, fileBytes) {
   out.set(p4, p1.length + p2.length + p3.length);
   return out;
 }
-
-// 追加：GETで疎通確認用
-export const onRequestGet = async () => {
-  return new Response(
-    JSON.stringify({ status: "ok", message: "upload.js GET is alive" }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
-  );
-};
