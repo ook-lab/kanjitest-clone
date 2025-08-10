@@ -1,16 +1,14 @@
-// /functions/api/upload.js — GASへJSONで中継（安定版・全文）
-// ENV: GAS_WEBAPP_URL (/exec), UPLOAD_SECRET（GASと同じ）
-
+// GASへ「application/x-www-form-urlencoded」で中継（安定版・最終）
 export const onRequestPost = async ({ request, env }) => {
   try {
     const gasUrl = env.GAS_WEBAPP_URL;
     const secret = env.UPLOAD_SECRET;
     if (!gasUrl || !secret) return j({ ok:false, error:"missing env GAS_WEBAPP_URL / UPLOAD_SECRET" }, 500);
 
-    // 1) クライアントから受け取る（multipart or JSON の両対応）
+    // 受け取り（multipart or JSON 両対応）
     let filename = "", mimeType = "image/png", blob = null;
-
     const ct = (request.headers.get("content-type") || "").toLowerCase();
+
     if (ct.includes("multipart/form-data")) {
       const form = await request.formData();
       filename = String(form.get("filename") || "");
@@ -33,19 +31,26 @@ export const onRequestPost = async ({ request, env }) => {
 
     if (!filename) return j({ ok:false, error:"filename required" }, 400);
 
-    // 2) Blob -> dataURL(base64) 化（GASへはJSONで送る）
-    const arrayBuf = await blob.arrayBuffer();
-    const b64 = bytesToBase64(new Uint8Array(arrayBuf));
+    // Blob → base64 dataURL
+    const u8 = new Uint8Array(await blob.arrayBuffer());
+    const b64 = bytesToBase64(u8);
     const dataUrlOut = `data:${mimeType};base64,${b64}`;
 
-    // 3) 署名（filename をメッセージに HMAC-SHA256 → base64）
+    // 署名（filename をメッセージ）
     const signature = await hmacBase64(filename, secret);
 
-    // 4) GASへJSON POST
+    // フォームエンコードで送る（GAS は e.parameter で確実に取れる）
+    const body = new URLSearchParams({
+      filename,
+      mimeType,
+      signature,
+      payload: JSON.stringify({ filename, mimeType, dataUrl: dataUrlOut, signature })
+    });
+
     const gasRes = await fetch(gasUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename, mimeType, dataUrl: dataUrlOut, signature })
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body
     });
 
     const text = await gasRes.text();
@@ -57,9 +62,8 @@ export const onRequestPost = async ({ request, env }) => {
   }
 };
 
-// 疎通確認（GET）
 export const onRequestGet = async () =>
-  new Response(JSON.stringify({ status:"ok", via:"cf-proxy", target:"gas-json" }), {
+  new Response(JSON.stringify({ status:"ok", via:"cf-proxy", target:"gas-form" }), {
     status: 200, headers: { "Content-Type":"application/json" }
   });
 
@@ -71,11 +75,7 @@ async function hmacBase64(message, secret) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name:"HMAC", hash:"SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(String(message||"")));
-  const b = new Uint8Array(sig);
-  let s = ""; for (let i=0;i<b.length;i++) s += String.fromCharCode(b[i]);
+  const b = new Uint8Array(sig); let s = ""; for (let i=0;i<b.length;i++) s += String.fromCharCode(b[i]);
   return btoa(s);
 }
-function bytesToBase64(u8) {
-  let s = ""; for (let i=0;i<u8.length;i++) s += String.fromCharCode(u8[i]);
-  return btoa(s);
-}
+function bytesToBase64(u8) { let s=""; for (let i=0;i<u8.length;i++) s+=String.fromCharCode(u8[i]); return btoa(s); }
