@@ -1,4 +1,4 @@
-// /functions/api/upload.js（全文差し替え・HMAC署名検証版）
+// /functions/api/upload.js（全文差し替え・CRED解析hotfix版）
 // Cloudflare Pages Functions → Google Drive へ dataURL(PNG/JPEG等) を保存
 // 必須ENV: GOOGLE_CREDENTIALS（SA JSON文字列）, DRIVE_FOLDER_ID（保存先フォルダID）
 // 任意ENV: UPLOAD_SECRET（HMAC共有鍵。設定時は X-Signature 検証を実施）
@@ -18,7 +18,7 @@ export const onRequestPost = async ({ request, env }) => {
       if (!ok) return j({ ok: false, error: "unauthorized" }, 401);
     }
 
-    // 1) JSONパース
+    // 1) JSONパース（リクエスト）
     let payload;
     try {
       payload = JSON.parse(raw);
@@ -41,7 +41,18 @@ export const onRequestPost = async ({ request, env }) => {
     const safeName = sanitizeName(filename);
 
     // 3) サービスアカウントJWTトークン取得
-    const creds = JSON.parse(String(env.GOOGLE_CREDENTIALS).replace(/\\n/g, "\n"));
+    // ここがhotfix：env.GOOGLE_CREDENTIALSは「そのまま」JSON.parseし、
+    // private_keyのみ "\\n" を実改行へ変換して使用する。
+    let creds;
+    try {
+      creds = JSON.parse(String(env.GOOGLE_CREDENTIALS));
+    } catch (e) {
+      return j({ ok: false, error: "bad GOOGLE_CREDENTIALS json", detail: String(e?.message || e) }, 500);
+    }
+    // private_key はどちらの形式でもOK（生\n or \\n）にする
+    if (creds && creds.private_key) {
+      creds.private_key = String(creds.private_key).replace(/\\n/g, "\n");
+    }
     const accessToken = await getAccessToken(creds);
     if (!accessToken) {
       return j({ ok: false, error: "failed to get access token" }, 500);
@@ -141,7 +152,7 @@ async function getAccessToken(creds) {
   );
   const toSignBytes = new TextEncoder().encode(`${header}.${claim}`);
 
-  const keyBuf = pemToPkcs8(creds.private_key);
+  const keyBuf = pemToPkcs8(creds.private_key); // ← ここはすでに \n 正規化済み
   const key = await crypto.subtle.importKey(
     "pkcs8",
     keyBuf,
@@ -174,7 +185,6 @@ function b64ToBytes(b64) {
   return out;
 }
 function base64ToBytes(b64) {
-  // tolerant: ignore whitespace
   b64 = String(b64 || "").replace(/\s+/g, "");
   return b64ToBytes(b64);
 }
