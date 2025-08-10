@@ -156,4 +156,35 @@ async function getAccessToken(creds) {
 
   const keyBuf = pemToPkcs8(creds.private_key);
   const key = await crypto.subtle.importKey("pkcs8", keyBuf, { name:"RSASSA-PKCS1-v1_5", hash:"SHA-256" }, false, ["sign"]);
-  const
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, toSign);
+  const jwt = `${header}.${claim}.${base64urlBytes(sig)}`;
+
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method:"POST",
+    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt })
+  });
+  const text = await tokenRes.text();
+  if (!tokenRes.ok) return null;
+  return (JSON.parse(text).access_token) || null;
+}
+
+// base64/data utils
+function b64ToBytes(b64) { const bin = atob(b64); const out = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
+function base64ToBytes(b64){ b64=String(b64||"").replace(/\s+/g,""); return b64ToBytes(b64); }
+function bytesToBase64(buf){ const v=new Uint8Array(buf); let s=""; for(let i=0;i<v.length;i++) s+=String.fromCharCode(v[i]); return btoa(s); }
+function base64url(str){ return btoa(str).replace(/=+/g,"").replace(/\+/g,"-").replace(/\//g,"_"); }
+function base64urlBytes(buf){ return bytesToBase64(buf).replace(/=+/g,"").replace(/\+/g,"-").replace(/\//g,"_"); }
+function pemToPkcs8(pem){ const b64=String(pem||"").replace(/-----[^-]+-----/g,"").replace(/\s+/g,""); return b64ToBytes(b64).buffer; }
+
+// multipart builder
+function buildMultipart(boundary, metadataJson, mime, fileBytes) {
+  const enc = new TextEncoder();
+  const p1 = enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataJson}\r\n`);
+  const p2 = enc.encode(`--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`);
+  const p3 = fileBytes;
+  const p4 = enc.encode(`\r\n--${boundary}--`);
+  const out = new Uint8Array(p1.length + p2.length + p3.length + p4.length);
+  out.set(p1, 0); out.set(p2, p1.length); out.set(p3, p1.length+p2.length); out.set(p4, p1.length+p2.length+p3.length);
+  return out;
+}
