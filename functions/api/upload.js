@@ -1,86 +1,66 @@
-// /functions/api/upload.js（完全版：Service Account + 共有ドライブ対応 / 全文差し替え）
-// 必須ENV: GOOGLE_CREDENTIALS（SAのJSONまたはそのBase64）, DRIVE_FOLDER_ID（共有ドライブ内フォルダID）
-// 任意ENV: UPLOAD_SECRET（HMAC共有鍵。ある場合は X-Signature で検証）
+// /functions/api/upload.js  — Cloudflare Pages Functions → GAS Webアプリ中継（全文）
 //
-// 受信形式: multipart/form-data 推奨（filename, mimeType, file）
-//          JSON { filename, mimeType, dataUrl } もフォールバック対応
+// 必須ENV:
+//   GAS_WEBAPP_URL  … GASの /exec URL
+//   UPLOAD_SECRET   … GAS側と共有のシークレット（HMAC用）
+//
+// 受け口: フロントからは multipart/form-data 推奨（filename, mimeType, file）
+//         JSON { filename, mimeType, dataUrl } もフォールバック対応（dataUrl→Blob化）
+// セキュリティ: filename をメッセージに base64(HMAC-SHA256) を作成し、FormDataの "signature" としてGASへ送信。
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    // 1) 入力取り出し（まず multipart、無ければ JSON）
-    const ct = (request.headers.get("content-type") || "").toLowerCase();
-    let isForm = false, filename = "", mimeType = "image/png", fileBlob = null, dataUrl = "";
+    const gasUrl = env.GAS_WEBAPP_URL;
+    const secret = env.UPLOAD_SECRET;
+    if (!gasUrl || !secret) {
+      return j({ ok:false, error:"missing env GAS_WEBAPP_URL / UPLOAD_SECRET" }, 500);
+    }
 
+    let filename = "", mimeType = "image/png", fileBlob = null;
+
+    const ct = (request.headers.get("content-type") || "").toLowerCase();
     if (ct.includes("multipart/form-data")) {
+      // ---- multipart 受信 ----
       const form = await request.formData();
       filename = String(form.get("filename") || "");
       mimeType = String(form.get("mimeType") || "image/png");
       const f = form.get("file");
       if (!(f instanceof Blob)) return j({ ok:false, error:"no file" }, 400);
       fileBlob = f;
-      isForm = true;
     } else {
+      // ---- JSON フォールバック ----
       const raw = await request.text();
       let payload;
       try { payload = JSON.parse(raw); }
       catch (e) { return j({ ok:false, error:"bad json", detail:String(e?.message||e) }, 400); }
       filename = String(payload?.filename || "");
       mimeType = String(payload?.mimeType || "image/png");
-      dataUrl  = String(payload?.dataUrl  || "");
+      const dataUrl = String(payload?.dataUrl || "");
       if (!dataUrl.startsWith("data:") || !dataUrl.includes(",")) {
         return j({ ok:false, error:"invalid dataUrl" }, 400);
       }
-      // dataURL → Blob
       const resp = await fetch(dataUrl);
       fileBlob = await resp.blob();
-      isForm = true;
     }
 
     if (!filename) return j({ ok:false, error:"filename required" }, 400);
-    if (!env.GOOGLE_CREDENTIALS || !env.DRIVE_FOLDER_ID) {
-      return j({ ok:false, error:"missing env vars (GOOGLE_CREDENTIALS / DRIVE_FOLDER_ID)" }, 500);
-    }
 
-    // 2) 署名検証（任意・簡易：filename をメッセージに HMAC。フロントと同一計算）
-    if (env.UPLOAD_SECRET) {
-      const sig = request.headers.get("x-signature") || "";
-      const ok = await verifyHmac(filename, sig, env.UPLOAD_SECRET);
-      if (!ok) return j({ ok:false, error:"unauthorized" }, 401);
-    }
+    // ---- HMAC 生成（filename をメッセージ）----
+    const signature = await hmacBase64(filename, secret);
 
-    // 3) SA 認証
-    const creds = loadServiceAccount(env.GOOGLE_CREDENTIALS);
-    const accessToken = await getAccessToken(creds);
-    if (!accessToken) return j({ ok:false, error:"failed to get access token" }, 500);
+    // ---- GASへ中継（multipartで新規作成）----
+    const fd = new FormData();
+    fd.append("filename", filename);
+    fd.append("mimeType", mimeType);
+    fd.append("signature", signature); // ← GAS側で検証
+    fd.append("file", new File([fileBlob], filename, { type: mimeType }));
 
-    // 4) バイナリ準備
-    let finalMime = mimeType || "application/octet-stream";
-    if (isForm) finalMime = fileBlob.type || finalMime;
-    const fileBytes = new Uint8Array(await fileBlob.arrayBuffer());
+    const gasRes = await fetch(gasUrl, { method: "POST", body: fd });
+    const text = await gasRes.text();
+    if (!gasRes.ok) return j({ ok:false, error:"GAS error", detail:text }, 502);
 
-    // 5) Drive multipart/related アップロード（共有ドライブ対応 supportsAllDrives=true）
-    const safeName = sanitizeName(filename);
-    const metadata = JSON.stringify({ name: safeName, parents: [env.DRIVE_FOLDER_ID] });
-    const boundary = "bnd_" + Math.random().toString(16).slice(2);
-    const body = buildMultipart(boundary, metadata, finalMime, fileBytes);
-
-    const upRes = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": `multipart/related; boundary=${boundary}`
-        },
-        body
-      }
-    );
-
-    const upText = await upRes.text();
-    if (!upRes.ok) return j({ ok:false, error:"Drive upload failed", detail: upText }, 500);
-    const data = JSON.parse(upText);
-
-    return j({ ok:true, id:data.id, name:data.name, webViewLink:data.webViewLink||null, webContentLink:data.webContentLink||null });
+    // GASのJSONをそのまま返却
+    return new Response(text, { status: 200, headers: { "Content-Type": "application/json" } });
   } catch (e) {
     return j({ ok:false, error:String(e?.message||e) }, 500);
   }
@@ -88,90 +68,19 @@ export const onRequestPost = async ({ request, env }) => {
 
 // 疎通確認（GET）
 export const onRequestGet = async () =>
-  new Response(JSON.stringify({ status:"ok", version:"v4-multipart+drives" }), {
-    status: 200, headers: { "Content-Type": "application/json" }
+  new Response(JSON.stringify({ status:"ok", via:"cf-proxy", target:"gas" }), {
+    status: 200, headers: { "Content-Type":"application/json" }
   });
 
-/* ==== helpers ==== */
-
+/* helpers */
 const j = (obj, status=200) =>
-  new Response(JSON.stringify(obj), { status, headers: { "Content-Type":"application/json" } });
+  new Response(JSON.stringify(obj), { status, headers:{ "Content-Type":"application/json" } });
 
-// HMAC 検証（base64(HMAC-SHA256(message)))
-async function verifyHmac(message, b64sig, secret) {
-  try {
-    const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name:"HMAC", hash:"SHA-256" }, false, ["verify"]);
-    const sigBytes = base64ToBytes(b64sig || "");
-    return await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(String(message||"")));
-  } catch { return false; }
-}
-
-function sanitizeName(name) {
-  return String(name || "unnamed").replace(/[\\/:*?"<>|]/g, "_").slice(0, 200);
-}
-
-// SA 読み込み（生JSON or Base64 のどちらでもOK / private_key の \n 正規化）
-function loadServiceAccount(src) {
-  const text = String(src);
-  // try JSON
-  try {
-    const obj = JSON.parse(text);
-    if (obj.private_key) obj.private_key = String(obj.private_key).replace(/\\n/g, "\n");
-    return obj;
-  } catch {}
-  // try Base64(JSON)
-  try {
-    const obj = JSON.parse(atob(text.replace(/\s+/g, "")));
-    if (obj.private_key) obj.private_key = String(obj.private_key).replace(/\\n/g, "\n");
-    return obj;
-  } catch {}
-  throw new Error("GOOGLE_CREDENTIALS must be raw JSON or its Base64");
-}
-
-// SA → OAuth2 JWT
-async function getAccessToken(creds) {
-  const now = Math.floor(Date.now()/1000);
-  const header = base64url(JSON.stringify({ alg:"RS256", typ:"JWT" }));
-  const claim  = base64url(JSON.stringify({
-    iss: creds.client_email,
-    scope: "https://www.googleapis.com/auth/drive.file",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600, iat: now
-  }));
-  const toSign = new TextEncoder().encode(`${header}.${claim}`);
-
-  const keyBuf = pemToPkcs8(creds.private_key);
-  const key = await crypto.subtle.importKey("pkcs8", keyBuf, { name:"RSASSA-PKCS1-v1_5", hash:"SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, toSign);
-  const jwt = `${header}.${claim}.${base64urlBytes(sig)}`;
-
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method:"POST",
-    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt })
-  });
-  const text = await tokenRes.text();
-  if (!tokenRes.ok) return null;
-  return (JSON.parse(text).access_token) || null;
-}
-
-// base64 / data utils
-function b64ToBytes(b64){ const bin=atob(b64); const out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
-function base64ToBytes(b64){ b64=String(b64||"").replace(/\s+/g,""); return b64ToBytes(b64); }
-function bytesToBase64(buf){ const v=new Uint8Array(buf); let s=""; for(let i=0;i<v.length;i++) s+=String.fromCharCode(v[i]); return btoa(s); }
-function base64url(str){ return btoa(str).replace(/=+/g,"").replace(/\+/g,"-").replace(/\//g,"_"); }
-function base64urlBytes(buf){ return bytesToBase64(buf).replace(/=+/g,"").replace(/\+/g,"-").replace(/\//g,"_"); }
-function pemToPkcs8(pem){ const b64=String(pem||"").replace(/-----[^-]+-----/g,"").replace(/\s+/g,""); return b64ToBytes(b64).buffer; }
-
-// multipart/related body
-function buildMultipart(boundary, metadataJson, mime, fileBytes) {
+async function hmacBase64(message, secret) {
   const enc = new TextEncoder();
-  const p1 = enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataJson}\r\n`);
-  const p2 = enc.encode(`--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`);
-  const p3 = fileBytes;
-  const p4 = enc.encode(`\r\n--${boundary}--`);
-  const out = new Uint8Array(p1.length + p2.length + p3.length + p4.length);
-  out.set(p1, 0); out.set(p2, p1.length); out.set(p3, p1.length+p2.length); out.set(p4, p1.length+p2.length+p3.length);
-  return out;
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name:"HMAC", hash:"SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(String(message||"")));
+  const b = new Uint8Array(sig);
+  let s = ""; for (let i=0;i<b.length;i++) s += String.fromCharCode(b[i]);
+  return btoa(s);
 }
