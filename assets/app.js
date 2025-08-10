@@ -618,31 +618,38 @@ function canvasToDataURL(cvs, mime = 'image/png') {
   return cvs.toDataURL(mime); // DPRはsetupCanvasForDPRで反映済み
 }
 
+// === ここから既存の uploadDataURL を丸ごと置き換え ===
 async function uploadDataURL({ filename, dataUrl, mimeType = 'image/png' }) {
-  const body = JSON.stringify({ filename, dataUrl, mimeType });
+  // dataUrl を Blob に変換
+  const resData = await fetch(dataUrl);
+  const blob = await resData.blob(); // 正しい MIME は dataUrl 側が保持
 
-  // 署名は、UPLOAD_SECRET が設定されている時のみ付与（互換保持）
-  let headers = { 'Content-Type': 'application/json' };
+  const fd = new FormData();
+  fd.append('filename', filename);
+  fd.append('mimeType', mimeType);
+  fd.append('file', new File([blob], filename, { type: mimeType }));
+
+  // 署名がある場合は本文のハッシュではなく、簡易に filename を材料にHMAC（衝突低リスク用途）
+  const headers = {};
   if (UPLOAD_SECRET) {
-    try {
-      const signature = await sign(body, UPLOAD_SECRET);
-      headers['X-Signature'] = signature;
-    } catch (e) {
-      console.warn('署名生成に失敗しました（UPLOAD_SECRET未設定またはブラウザ制限）:', e);
-    }
+    const signature = await sign(filename, UPLOAD_SECRET);
+    headers['X-Signature'] = signature;
   }
 
-  const res = await fetch('/api/upload', {
+  const resp = await fetch('/api/upload', {
     method: 'POST',
-    headers,
-    body
+    headers,            // Content-Typeは付けない（ブラウザがboundary付きで付与）
+    body: fd
   });
-  if (!res.ok) {
-    const text = await res.text().catch(()=> '');
-    throw new Error(`upload failed: ${res.status} ${text}`);
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(()=>'');
+    throw new Error(`upload failed: ${resp.status} ${text}`);
   }
-  return await res.json().catch(()=> ({}));
+  return await resp.json().catch(()=> ({}));
 }
+// === 置き換えここまで ===
+
 
 async function saveEachPageToDrive() {
   const baseName = (__sourceFilename && __sourceFilename.trim())
