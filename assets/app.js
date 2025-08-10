@@ -1,4 +1,4 @@
-// assets/app.js（全文差し替え：見た目は現状維持＋解答ページ対応のみ追加）
+// assets/app.js（全文差し替え：HMAC署名対応版 / 見た目・機能は現状維持＋解答ページ対応）
 
 const $ = (s) => document.querySelector(s);
 const canvas = $("#preview");
@@ -594,16 +594,48 @@ window.addEventListener("message", (ev) => {
     }
   }
 });
+
+// ===== 署名/HMAC（HMAC-SHA256）=====
+// 🚩 実運用ではビルド時注入やGAS中継で秘匿してください。ここはプレースホルダ。
+const UPLOAD_SECRET = ""; // 例: "set-in-build-or-use-gas-proxy"
+
+// HMAC-SHA256署名を作る関数（body: string, secret: string）→ base64文字列
+async function sign(body, secret) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(body));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+
 // ===== Drive保存（Cloudflare Pages Functions 版 /api/upload）=====
 function canvasToDataURL(cvs, mime = 'image/png') {
   return cvs.toDataURL(mime); // DPRはsetupCanvasForDPRで反映済み
 }
 
 async function uploadDataURL({ filename, dataUrl, mimeType = 'image/png' }) {
+  const body = JSON.stringify({ filename, dataUrl, mimeType });
+
+  // 署名は、UPLOAD_SECRET が設定されている時のみ付与（互換保持）
+  let headers = { 'Content-Type': 'application/json' };
+  if (UPLOAD_SECRET) {
+    try {
+      const signature = await sign(body, UPLOAD_SECRET);
+      headers['X-Signature'] = signature;
+    } catch (e) {
+      console.warn('署名生成に失敗しました（UPLOAD_SECRET未設定またはブラウザ制限）:', e);
+    }
+  }
+
   const res = await fetch('/api/upload', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename, dataUrl, mimeType })
+    headers,
+    body
   });
   if (!res.ok) {
     const text = await res.text().catch(()=> '');
