@@ -620,36 +620,22 @@ function canvasToDataURL(cvs, mime = 'image/png') {
 
 // === ここから既存の uploadDataURL を丸ごと置き換え ===
 async function uploadDataURL({ filename, dataUrl, mimeType = 'image/png' }) {
-  // dataUrl を Blob に変換
-  const resData = await fetch(dataUrl);
-  const blob = await resData.blob(); // 正しい MIME は dataUrl 側が保持
-
-  const fd = new FormData();
-  fd.append('filename', filename);
-  fd.append('mimeType', mimeType);
-  fd.append('file', new File([blob], filename, { type: mimeType }));
-
-  // 署名がある場合は本文のハッシュではなく、簡易に filename を材料にHMAC（衝突低リスク用途）
-  const headers = {};
-  if (UPLOAD_SECRET) {
-    const signature = await sign(filename, UPLOAD_SECRET);
-    headers['X-Signature'] = signature;
-  }
+  const safeName = (filename && filename.trim()) ? filename.trim() : `kanji-test_${Date.now()}.png`;
+  const payload = { filename: safeName, mimeType, dataUrl };
 
   const resp = await fetch('/api/upload', {
     method: 'POST',
-    headers,            // Content-Typeは付けない（ブラウザがboundary付きで付与）
-    body: fd
+    headers: { 'Content-Type': 'application/json' }, // ← JSON固定送信
+    body: JSON.stringify(payload)
   });
 
   if (!resp.ok) {
     const text = await resp.text().catch(()=>'');
     throw new Error(`upload failed: ${resp.status} ${text}`);
   }
-  return await resp.json().catch(()=> ({}));
+  return await resp.json();
 }
 // === 置き換えここまで ===
-
 
 async function saveEachPageToDrive() {
   const baseName = (__sourceFilename && __sourceFilename.trim())
