@@ -662,3 +662,66 @@ async function saveEachPageToDrive() {
 // ボタン紐付け（ID: save-to-drive）
 const saveBtn = document.querySelector('#save-to-drive');
 if (saveBtn) saveBtn.addEventListener('click', saveEachPageToDrive);
+
+// ==== AutoSave bootstrap: ?autoSave=1&jsonUrl=<GAS WebApp URL> で自動保存 ====
+(function bootstrapAutoSave() {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get("autoSave") !== "1") return;
+
+    const rawUrl = params.get("jsonUrl");
+    if (!rawUrl) {
+      console.error("autoSave: jsonUrl がありません");
+      alert("autoSave: jsonUrl がありません");
+      return;
+    }
+
+    // withMeta=1 を付与（ファイル名取得用）。既に付いていればそのまま。
+    const withMetaUrl = (() => {
+      try {
+        const u = new URL(rawUrl, location.href);
+        if (!u.searchParams.has("withMeta")) u.searchParams.set("withMeta", "1");
+        return u.toString();
+      } catch (_) {
+        // 相対URL等の保険
+        return rawUrl + (rawUrl.includes("?") ? "&" : "?") + "withMeta=1";
+      }
+    })();
+
+    fetch(withMetaUrl, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then((obj) => {
+        try {
+          if (typeof obj.fileName === "string") setSourceFilename(obj.fileName);
+        } catch (_) {}
+
+        // questions 形式 or words 形式のどちらでも既存処理に委ねる
+        loadFromJSON(obj);
+
+        // ほんの少し待ってから自動保存
+        setTimeout(() => {
+          Promise.resolve(saveEachPageToDrive())
+            .then(() => {
+              if (params.get("closeAfter") === "1") {
+                window.close();
+              } else {
+                alert("Driveへ自動保存しました。");
+              }
+            })
+            .catch((err) => {
+              console.error(err);
+              alert("自動保存でエラー: " + err.message);
+            });
+        }, 50);
+      })
+      .catch((err) => {
+        console.error(err);
+        alert("JSON取得に失敗しました: " + err.message);
+      });
+  } catch (e) {
+    console.error(e);
+  }
+})();
