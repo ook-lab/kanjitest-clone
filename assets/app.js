@@ -642,24 +642,26 @@ async function saveEachPageToDrive() {
     ? __sourceFilename.replace(/\.[^.]+$/, '')
     : 'kanji-test';
 
- // （中略）baseName を決めたあと
+  // ★ 追加：ASCIIのみ残す（日本語などは _ に置換）
+  const baseSlug = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-// 問題ページ
-const qUrl = canvasToDataURL(canvas, 'image/png');
-const qName = `${baseName}_問題.png`;
-console.log('[dbg] using filename:', qName);   // ← ここを追加
-await uploadDataURL({ filename: qName, dataUrl: qUrl });
+  // 問題ページ
+  const qUrl = canvasToDataURL(canvas, 'image/png');
+  const qName = `${baseSlug}_Q.png`;        // ← ここを置換（「問題」→ _Q）
+  console.log('[dbg] using filename:', qName);
+  await uploadDataURL({ filename: qName, dataUrl: qUrl });
 
-// 解答ページ（ある場合）
-if (typeof answersCanvas !== 'undefined' && answersCanvas) {
-  const aUrl = canvasToDataURL(answersCanvas, 'image/png');
-  const aName = `${baseName}_解答.png`;
-  console.log('[dbg] using filename:', aName); // ← ここを追加
-  await uploadDataURL({ filename: aName, dataUrl: aUrl });
-}
+  // 解答ページがある場合
+  if (typeof answersCanvas !== 'undefined' && answersCanvas) {
+    const aUrl = canvasToDataURL(answersCanvas, 'image/png');
+    const aName = `${baseSlug}_A.png`;      // ← ここを置換（「解答」→ _A）
+    console.log('[dbg] using filename:', aName);
+    await uploadDataURL({ filename: aName, dataUrl: aUrl });
+  }
 
   alert('Driveへ保存しました。フォルダをご確認ください。');
 }
+
 
 // ボタン紐付け（ID: save-to-drive）
 const saveBtn = document.querySelector('#save-to-drive');
