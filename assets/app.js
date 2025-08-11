@@ -642,15 +642,21 @@ async function saveEachPageToDrive() {
     ? __sourceFilename.replace(/\.[^.]+$/, '')
     : 'kanji-test';
 
-  // 問題ページ
-  const qUrl = canvasToDataURL(canvas, 'image/png');
-  await uploadDataURL({ filename: `${baseName}_問題.png`, dataUrl: qUrl });
+ // （中略）baseName を決めたあと
 
-  // 解答ページがある場合
-  if (typeof answersCanvas !== 'undefined' && answersCanvas) {
-    const aUrl = canvasToDataURL(answersCanvas, 'image/png');
-    await uploadDataURL({ filename: `${baseName}_解答.png`, dataUrl: aUrl });
-  }
+// 問題ページ
+const qUrl = canvasToDataURL(canvas, 'image/png');
+const qName = `${baseName}_問題.png`;
+console.log('[dbg] using filename:', qName);   // ← ここを追加
+await uploadDataURL({ filename: qName, dataUrl: qUrl });
+
+// 解答ページ（ある場合）
+if (typeof answersCanvas !== 'undefined' && answersCanvas) {
+  const aUrl = canvasToDataURL(answersCanvas, 'image/png');
+  const aName = `${baseName}_解答.png`;
+  console.log('[dbg] using filename:', aName); // ← ここを追加
+  await uploadDataURL({ filename: aName, dataUrl: aUrl });
+}
 
   alert('Driveへ保存しました。フォルダをご確認ください。');
 }
